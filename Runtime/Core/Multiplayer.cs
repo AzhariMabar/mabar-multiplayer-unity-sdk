@@ -16,13 +16,22 @@ namespace Mabar.Multiplayer.Core
         private static RpcClient rpcClient;
 
         public static bool IsReady => realtimeClient != null && realtimeClient.IsConnected;
+        public static string PlayerId => realtimeClient?.PlayerId;
 
         public static void Initialize(MultiplayerSettings configuration)
         {
+            if (string.IsNullOrEmpty(configuration.AppKey))
+            {
+                Debug.LogError("[MabarSDK] AppKey is empty! Set it in the MabarSettings asset (Inspector).");
+                return;
+            }
+
             settings = configuration;
-            realtimeClient = new RealtimeClient(configuration.WsUrl, configuration.ApiUrl);
+            realtimeClient = new RealtimeClient(configuration.WsUrl, configuration.ApiUrl, configuration.AppKey);
             rpcClient = new RpcClient(realtimeClient);
-            RoomManager.Initialize(configuration.ApiUrl, realtimeClient);
+            RoomManager.Initialize(configuration.ApiUrl, configuration.AppKey, realtimeClient);
+
+            Debug.Log($"[MabarSDK] Initialized. AppKey: {configuration.AppKey[..Math.Min(8, configuration.AppKey.Length)]}...");
         }
 
         public static async Task Connect()
@@ -34,7 +43,7 @@ namespace Mabar.Multiplayer.Core
         public static async Task<AuthResponse> LoginGuest()
         {
             EnsureInitialized();
-            var auth = new GuestAuth(settings.ApiUrl);
+            var auth = new GuestAuth(settings.ApiUrl, settings.AppKey);
             var response = await auth.LoginGuestAsync();
             realtimeClient.SetPlayerId(response.PlayerId);
             return response;
@@ -75,9 +84,7 @@ namespace Mabar.Multiplayer.Core
         private static void EnsureInitialized()
         {
             if (settings == null || realtimeClient == null || rpcClient == null)
-            {
-                throw new InvalidOperationException("Multiplayer SDK is not initialized. Call Multiplayer.Initialize(settings) before use.");
-            }
+                throw new InvalidOperationException("[MabarSDK] Not initialized. Call Multiplayer.Initialize(settings) first.");
         }
     }
 }

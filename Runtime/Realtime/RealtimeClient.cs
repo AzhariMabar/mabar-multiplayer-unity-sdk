@@ -6,8 +6,6 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
-using UnityEngine.Networking;
-using Mabar.Multiplayer.Models;
 using Mabar.Multiplayer.RPC;
 
 namespace Mabar.Multiplayer.Realtime
@@ -16,6 +14,7 @@ namespace Mabar.Multiplayer.Realtime
     {
         private readonly string wsUrl;
         private readonly string apiUrl;
+        private readonly string appKey;
         private ClientWebSocket socket;
         private CancellationTokenSource receiveCts;
         private string playerId;
@@ -26,37 +25,26 @@ namespace Mabar.Multiplayer.Realtime
         public string PlayerId => playerId;
         public string RoomId => roomId;
 
-        public RealtimeClient(string wsUrl, string apiUrl)
+        public RealtimeClient(string wsUrl, string apiUrl, string appKey)
         {
             this.wsUrl = wsUrl;
             this.apiUrl = apiUrl;
+            this.appKey = appKey;
         }
 
-        public void SetPlayerId(string id)
-        {
-            playerId = id;
-        }
-
-        public void SetRoomId(string id)
-        {
-            roomId = id;
-        }
-
-        public void ClearRoomId()
-        {
-            roomId = string.Empty;
-        }
+        public void SetPlayerId(string id) => playerId = id;
+        public void SetRoomId(string id) => roomId = id;
+        public void ClearRoomId() => roomId = string.Empty;
 
         public async Task ConnectAsync()
         {
-            if (IsConnected)
-            {
-                return;
-            }
+            if (IsConnected) return;
 
             socket = new ClientWebSocket();
             await socket.ConnectAsync(new Uri(wsUrl), CancellationToken.None);
-            await SendRawAsync(new { type = "connect", playerId, roomId });
+
+            // Send AppKey on first connect message so the backend can scope the session
+            await SendRawAsync(new { type = "connect", playerId, roomId, appKey });
 
             receiveCts = new CancellationTokenSource();
             _ = ReceiveLoop(receiveCts.Token);
@@ -71,18 +59,14 @@ namespace Mabar.Multiplayer.Realtime
         public void On(string eventName, Action<RpcPayload> callback)
         {
             if (!rpcListeners.ContainsKey(eventName))
-            {
                 rpcListeners[eventName] = new List<Action<RpcPayload>>();
-            }
             rpcListeners[eventName].Add(callback);
         }
 
         private async Task SendRawAsync(object payload)
         {
             if (!IsConnected)
-            {
                 throw new InvalidOperationException("Realtime client is not connected.");
-            }
 
             var json = JsonSerializer.Serialize(payload);
             var bytes = Encoding.UTF8.GetBytes(json);
@@ -104,15 +88,18 @@ namespace Mabar.Multiplayer.Realtime
                     }
 
                     var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
-                    var wrapper = JsonSerializer.Deserialize<RealtimeResponse>(message, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    var wrapper = JsonSerializer.Deserialize<RealtimeResponse>(message, opts);
+
                     if (wrapper?.Type == "rpc" && wrapper.Payload != null)
-                    {
                         DispatchRpc(wrapper.Payload);
-                    }
+
+                    if (wrapper?.Type == "error")
+                        Debug.LogError($"[MabarSDK] Server error: {message}");
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"Realtime receive error: {ex.Message}");
+                    Debug.LogError($"[MabarSDK] Realtime receive error: {ex.Message}");
                     break;
                 }
             }
@@ -120,18 +107,11 @@ namespace Mabar.Multiplayer.Realtime
 
         private void DispatchRpc(RpcPayload payload)
         {
-            if (payload == null || string.IsNullOrEmpty(payload.Event))
-            {
-                return;
-            }
+            if (payload == null || string.IsNullOrEmpty(payload.Event)) return;
 
             if (rpcListeners.TryGetValue(payload.Event, out var listeners))
-            {
-                foreach (var callback in listeners)
-                {
-                    callback.Invoke(payload);
-                }
-            }
+                foreach (var cb in listeners)
+                    cb.Invoke(payload);
         }
 
         public class RealtimeResponse
