@@ -11,6 +11,6 @@ namespace Mabar.Multiplayer.Models
 
         [Header("Backend URL")]
         [Tooltip("Mabar API endpoint. Leave default for hosted, or http://localhost:4000 for local dev.")]
-        public string ApiUrl = "https://mabar.studio/mk/api";
+        public string ApiUrl = "https://api.mabar.studio";
     }
 }
