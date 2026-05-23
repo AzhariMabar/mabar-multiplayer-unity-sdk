@@ -109,6 +109,18 @@ namespace Mabar.Multiplayer.Core
             return await RoomManager.SubmitTurnAsync(roomId, state, nextTurn);
         }
 
+        // ─── Dev / Simulation helpers ──────────────────────────────────────
+
+        /// Manually set active player token — used by TurnSimConsole to simulate
+        /// multiple players in one Unity instance (each player in production
+        /// runs on their own device with their own Login session).
+        public static void SetToken(string token, string playerId)
+        {
+            Token    = token;
+            PlayerId = playerId;
+            RoomManager.SetToken(token);
+        }
+
         // ─── Internals ─────────────────────────────────────────────────────
 
         private static void ApplyAuth(AuthResponse response)
