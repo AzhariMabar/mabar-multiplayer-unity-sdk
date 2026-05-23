@@ -13,30 +13,28 @@ namespace Mabar.Multiplayer.Editor
         public static void ShowWindow()
         {
             var window = GetWindow<SetupWizardWindow>("Mabar Setup");
-            window.minSize = new Vector2(420, 340);
+            window.minSize = new Vector2(420, 300);
         }
 
         private void OnGUI()
         {
             var titleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 15 };
+            var subStyle   = new GUIStyle(EditorStyles.miniLabel) { wordWrap = true };
             var labelStyle = new GUIStyle(EditorStyles.label) { wordWrap = true };
-            var subStyle  = new GUIStyle(EditorStyles.miniLabel) { wordWrap = true };
 
             GUILayout.Space(12);
             GUILayout.Label("Mabar Multiplayer SDK", titleStyle);
-            GUILayout.Label("Like Photon, but yours — set your App Key and start building.", subStyle);
+            GUILayout.Label("Like Photon, but yours — paste AppKey, start building.", subStyle);
             GUILayout.Space(14);
 
-            // Step tabs
-            var stepLabels = new[] { "1. Create Asset", "2. Set App Key", "3. Confirm" };
-            step = GUILayout.Toolbar(step, stepLabels);
+            step = GUILayout.Toolbar(step, new[] { "1. Create Asset", "2. Set App Key", "3. Done" });
             GUILayout.Space(12);
 
             switch (step)
             {
                 case 0: DrawStepCreateAsset(labelStyle); break;
                 case 1: DrawStepSetKey(labelStyle, subStyle); break;
-                case 2: DrawStepConfirm(labelStyle, subStyle); break;
+                case 2: DrawStepDone(labelStyle, subStyle); break;
             }
         }
 
@@ -62,7 +60,7 @@ namespace Mabar.Multiplayer.Editor
             }
             else
             {
-                EditorGUILayout.HelpBox("Asset found! Move to the next step to set your App Key.", MessageType.Info);
+                EditorGUILayout.HelpBox("Asset found! Move to Step 2 to set your App Key.", MessageType.Info);
                 if (GUILayout.Button("Next →", GUILayout.Height(28))) step = 1;
             }
         }
@@ -76,7 +74,7 @@ namespace Mabar.Multiplayer.Editor
             }
 
             GUILayout.Label("Enter your App Key:", labelStyle);
-            GUILayout.Label("You get this from the Mabar dashboard after registering your game.\nIt works like Photon's App ID — paste it here, done.", subStyle);
+            GUILayout.Label("Get this from the Mabar dashboard after registering your game.\nPaste it here — no Firebase, no backend setup needed.", subStyle);
             GUILayout.Space(10);
 
             EditorGUI.BeginChangeCheck();
@@ -89,15 +87,13 @@ namespace Mabar.Multiplayer.Editor
             }
 
             GUILayout.Space(6);
-            GUILayout.Label("Backend URL (leave default for hosted Mabar API):", subStyle);
+            GUILayout.Label("API URL (leave default for hosted Mabar API):", subStyle);
             EditorGUI.BeginChangeCheck();
             var newApi = EditorGUILayout.TextField("API URL", settings.ApiUrl);
-            var newWs  = EditorGUILayout.TextField("WS URL",  settings.WsUrl);
             if (EditorGUI.EndChangeCheck())
             {
-                Undo.RecordObject(settings, "Set URLs");
+                Undo.RecordObject(settings, "Set ApiUrl");
                 settings.ApiUrl = newApi;
-                settings.WsUrl  = newWs;
                 EditorUtility.SetDirty(settings);
             }
 
@@ -107,11 +103,11 @@ namespace Mabar.Multiplayer.Editor
             GUI.enabled = true;
         }
 
-        private void DrawStepConfirm(GUIStyle labelStyle, GUIStyle subStyle)
+        private void DrawStepDone(GUIStyle labelStyle, GUIStyle subStyle)
         {
             if (settings == null || string.IsNullOrEmpty(settings?.AppKey))
             {
-                EditorGUILayout.HelpBox("Complete steps 1 and 2 first.", MessageType.Warning);
+                EditorGUILayout.HelpBox("Complete Steps 1 and 2 first.", MessageType.Warning);
                 return;
             }
 
@@ -121,14 +117,13 @@ namespace Mabar.Multiplayer.Editor
             GUILayout.Label("Summary:", labelStyle);
             EditorGUILayout.LabelField("App Key", $"{settings.AppKey[..System.Math.Min(8, settings.AppKey.Length)]}...");
             EditorGUILayout.LabelField("API URL", settings.ApiUrl);
-            EditorGUILayout.LabelField("WS URL",  settings.WsUrl);
 
             GUILayout.Space(10);
             GUILayout.Label("In your game script:", subStyle);
 
             var codeStyle = new GUIStyle(EditorStyles.helpBox) { fontStyle = FontStyle.Italic };
             GUILayout.Label(
-                "Multiplayer.Initialize(Settings);\nawait Multiplayer.Connect();\nvar auth = await Multiplayer.LoginGuest();",
+                "Multiplayer.Initialize(Settings);\nvar auth = await Multiplayer.LoginGuest();\nvar room = await Multiplayer.CreateRoom(\"Match\", maxPlayers: 2);\n\n// Poll opponent turn:\nvar state = await Multiplayer.GetRoom(room.Id);\n\n// Submit your move:\nawait Multiplayer.SubmitTurn(room.Id, new Dictionary<string,object>{{ \"move\", \"e4\" }});",
                 codeStyle);
 
             GUILayout.Space(10);

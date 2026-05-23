@@ -1,16 +1,16 @@
 using System;
 using System.Text;
-using System.Text.Json;
 using System.Threading.Tasks;
+using Mabar.Multiplayer.Utils;
 using UnityEngine.Networking;
 
 namespace Mabar.Multiplayer.Auth
 {
     public class AuthResponse
     {
-        public string PlayerId { get; set; }
-        public string Token { get; set; }
-        public long ExpiresAt { get; set; }
+        public string PlayerId  { get; set; }
+        public string Token     { get; set; }
+        public long   ExpiresAt { get; set; }
     }
 
     public class GuestAuth
@@ -26,22 +26,39 @@ namespace Mabar.Multiplayer.Auth
 
         public async Task<AuthResponse> LoginGuestAsync()
         {
-            var url = $"{apiUrl}/auth/guest";
-            using var request = new UnityWebRequest(url, "POST")
+            using var req = new UnityWebRequest($"{apiUrl}/auth/guest", "POST")
             {
-                uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes("{}")),
-                downloadHandler = new DownloadHandlerBuffer()
+                uploadHandler   = new UploadHandlerRaw(Encoding.UTF8.GetBytes("{}")),
+                downloadHandler = new DownloadHandlerBuffer(),
             };
-            request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("X-Mabar-App-Key", appKey);
+            req.SetRequestHeader("Content-Type", "application/json");
+            req.SetRequestHeader("X-Mabar-App-Key", appKey);
 
-            await request.SendWebRequest();
+            await req.SendWebRequest();
 
-            if (request.result != UnityWebRequest.Result.Success)
-                throw new InvalidOperationException($"Guest login failed: {request.error} — {request.downloadHandler.text}");
+            if (req.result != UnityWebRequest.Result.Success)
+                throw new Exception($"[MabarSDK] Guest login failed: {req.error} — {req.downloadHandler.text}");
 
-            return JsonSerializer.Deserialize<AuthResponse>(request.downloadHandler.text,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            return JsonUtil.Deserialize<AuthResponse>(req.downloadHandler.text);
+        }
+
+        public async Task<AuthResponse> RefreshAsync(string token)
+        {
+            using var req = new UnityWebRequest($"{apiUrl}/auth/refresh", "POST")
+            {
+                uploadHandler   = new UploadHandlerRaw(Encoding.UTF8.GetBytes("{}")),
+                downloadHandler = new DownloadHandlerBuffer(),
+            };
+            req.SetRequestHeader("Content-Type", "application/json");
+            req.SetRequestHeader("X-Mabar-App-Key", appKey);
+            req.SetRequestHeader("Authorization", $"Bearer {token}");
+
+            await req.SendWebRequest();
+
+            if (req.result != UnityWebRequest.Result.Success)
+                throw new Exception($"[MabarSDK] Token refresh failed: {req.error} — {req.downloadHandler.text}");
+
+            return JsonUtil.Deserialize<AuthResponse>(req.downloadHandler.text);
         }
     }
 }

@@ -1,10 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
-using System.Text.Json;
 using System.Threading.Tasks;
-using UnityEngine.Networking;
-using Mabar.Multiplayer.Realtime;
 using Mabar.Multiplayer.Models;
+using Mabar.Multiplayer.Utils;
+using UnityEngine.Networking;
 
 namespace Mabar.Multiplayer.Rooms
 {
@@ -12,61 +12,107 @@ namespace Mabar.Multiplayer.Rooms
     {
         private static string apiUrl;
         private static string appKey;
-        private static RealtimeClient realtime;
-        private static string currentRoomId;
+        private static string token;
 
-        public static void Initialize(string apiBaseUrl, string appKeyValue, RealtimeClient realtimeClient)
+        public static string CurrentRoomId { get; private set; }
+
+        public static void Initialize(string apiBaseUrl, string appKeyValue)
         {
             apiUrl = apiBaseUrl.TrimEnd('/');
             appKey = appKeyValue;
-            realtime = realtimeClient;
         }
 
-        public static async Task CreateRoomAsync(string name, int maxPlayers, bool isPrivate)
+        public static void SetToken(string sessionToken)
         {
-            var body = new { playerId = realtime.PlayerId, name, maxPlayers, isPrivate };
-            var response = await PostAsync($"{apiUrl}/rooms/create", body);
-            var room = JsonSerializer.Deserialize<RoomRecord>(response,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            currentRoomId = room?.Id;
-            realtime.SetRoomId(currentRoomId);
+            token = sessionToken;
         }
 
-        public static async Task JoinRoomAsync(string roomId)
+        // ─── Room ops ──────────────────────────────────────────────────────
+
+        public static async Task<RoomRecord> CreateRoomAsync(string name, int maxPlayers, bool isPrivate)
         {
-            var body = new { roomId, playerId = realtime.PlayerId };
-            var response = await PostAsync($"{apiUrl}/rooms/join", body);
-            var room = JsonSerializer.Deserialize<RoomRecord>(response,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            currentRoomId = room?.Id;
-            realtime.SetRoomId(currentRoomId);
+            var body = new { name, maxPlayers, isPrivate };
+            var json = await PostAsync("/rooms/create", body);
+            var room = JsonUtil.Deserialize<RoomRecord>(json);
+            CurrentRoomId = room?.Id;
+            return room;
         }
 
-        public static async Task LeaveRoomAsync(string roomId)
+        public static async Task<RoomRecord> JoinRoomAsync(string roomId, string inviteCode = null)
         {
-            var body = new { roomId, playerId = realtime.PlayerId };
-            await PostAsync($"{apiUrl}/rooms/leave", body);
-            currentRoomId = string.Empty;
-            realtime.ClearRoomId();
+            var body = inviteCode != null
+                ? (object)new { roomId, inviteCode }
+                : new { roomId };
+            var json = await PostAsync("/rooms/join", body);
+            var room = JsonUtil.Deserialize<RoomRecord>(json);
+            CurrentRoomId = room?.Id;
+            return room;
         }
 
-        private static async Task<string> PostAsync(string url, object body)
+        public static async Task<RoomRecord> LeaveRoomAsync(string roomId)
         {
-            var payload = JsonSerializer.Serialize(body);
-            using var request = new UnityWebRequest(url, "POST")
+            var json = await PostAsync("/rooms/leave", new { roomId });
+            CurrentRoomId = null;
+            return JsonUtil.Deserialize<RoomRecord>(json);
+        }
+
+        public static async Task<RoomRecord> GetRoomAsync(string roomId)
+        {
+            var json = await GetAsync($"/rooms/{roomId}");
+            return JsonUtil.Deserialize<RoomRecord>(json);
+        }
+
+        public static async Task<RoomRecord> SubmitTurnAsync(string roomId, object state, string nextTurn = null)
+        {
+            var body = nextTurn != null
+                ? (object)new { roomId, state, nextTurn }
+                : new { roomId, state };
+            var json = await PostAsync("/rooms/turn", body);
+            return JsonUtil.Deserialize<RoomRecord>(json);
+        }
+
+        // ─── HTTP helpers ──────────────────────────────────────────────────
+
+        private static async Task<string> PostAsync(string path, object body)
+        {
+            EnsureAuth();
+            var payload = JsonUtil.Serialize(body);
+            using var req = new UnityWebRequest($"{apiUrl}{path}", "POST")
             {
-                uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(payload)),
-                downloadHandler = new DownloadHandlerBuffer()
+                uploadHandler   = new UploadHandlerRaw(Encoding.UTF8.GetBytes(payload)),
+                downloadHandler = new DownloadHandlerBuffer(),
             };
-            request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("X-Mabar-App-Key", appKey);
+            req.SetRequestHeader("Content-Type", "application/json");
+            req.SetRequestHeader("X-Mabar-App-Key", appKey);
+            req.SetRequestHeader("Authorization", $"Bearer {token}");
 
-            await request.SendWebRequest();
+            await req.SendWebRequest();
 
-            if (request.result != UnityWebRequest.Result.Success)
-                throw new InvalidOperationException($"HTTP request failed: {request.error} — {request.downloadHandler.text}");
+            if (req.result != UnityWebRequest.Result.Success)
+                throw new Exception($"[MabarSDK] {path} failed: {req.error} — {req.downloadHandler.text}");
 
-            return request.downloadHandler.text;
+            return req.downloadHandler.text;
+        }
+
+        private static async Task<string> GetAsync(string path)
+        {
+            EnsureAuth();
+            using var req = UnityWebRequest.Get($"{apiUrl}{path}");
+            req.SetRequestHeader("X-Mabar-App-Key", appKey);
+            req.SetRequestHeader("Authorization", $"Bearer {token}");
+
+            await req.SendWebRequest();
+
+            if (req.result != UnityWebRequest.Result.Success)
+                throw new Exception($"[MabarSDK] GET {path} failed: {req.error} — {req.downloadHandler.text}");
+
+            return req.downloadHandler.text;
+        }
+
+        private static void EnsureAuth()
+        {
+            if (string.IsNullOrEmpty(token))
+                throw new InvalidOperationException("[MabarSDK] Not authenticated. Call Multiplayer.LoginGuest() first.");
         }
     }
 }
