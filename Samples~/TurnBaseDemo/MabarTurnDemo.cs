@@ -11,19 +11,15 @@ using Mabar.Multiplayer.Models;
 ///   1. Buat empty GameObject di scene, attach script ini
 ///   2. Assign MabarSettings asset ke field Settings di Inspector
 ///   3. Play — UI otomatis muncul
-///
-/// Flow:
-///   Login → Create Room (host) atau Join Room (player lain) →
-///   Kirim giliran → Lihat state semua player real-time
 /// </summary>
 public class MabarTurnDemo : MonoBehaviour
 {
-    public Mabar.Multiplayer.Models.MultiplayerSettings Settings;
+    public MultiplayerSettings Settings;
 
     // ─── State ─────────────────────────────────────────────────────────────
 
-    enum Screen { Login, Lobby, Game }
-    Screen screen = Screen.Login;
+    enum GameScreen { Login, Lobby, Game }
+    GameScreen screen = GameScreen.Login;
 
     string statusMsg   = "Belum login.";
     string roomIdInput = "";
@@ -34,10 +30,10 @@ public class MabarTurnDemo : MonoBehaviour
     RoomRecord currentRoom;
     List<string> moveLog = new List<string>();
 
-    bool   isPolling   = false;
-    bool   actionBusy  = false;
+    bool isPolling  = false;
+    bool actionBusy = false;
 
-    // ─── Styles (inisialisasi sekali) ──────────────────────────────────────
+    // ─── Styles ────────────────────────────────────────────────────────────
 
     GUIStyle styleTitle, styleStatus, styleBox, styleBtnPrimary, styleBtnSecondary,
              styleLabel, styleMono, styleTurnActive, styleTurnWaiting, styleLog;
@@ -83,14 +79,14 @@ public class MabarTurnDemo : MonoBehaviour
         {
             fontSize = 13, fontStyle = FontStyle.Bold,
             normal   = { background = MakeTexture(new Color(0.05f, 0.55f, 0.9f)),  textColor = Color.white },
-            hover    = { background = MakeTexture(new Color(0.1f, 0.65f, 1f)),     textColor = Color.white },
-            active   = { background = MakeTexture(new Color(0.0f, 0.4f, 0.75f)),   textColor = Color.white },
+            hover    = { background = MakeTexture(new Color(0.1f,  0.65f, 1f)),    textColor = Color.white },
+            active   = { background = MakeTexture(new Color(0.0f,  0.4f,  0.75f)), textColor = Color.white },
             padding  = new RectOffset(12, 12, 8, 8),
         };
         styleBtnSecondary = new GUIStyle(styleBtnPrimary)
         {
             normal = { background = MakeTexture(new Color(0.15f, 0.18f, 0.25f)), textColor = new Color(0.7f, 0.7f, 0.7f) },
-            hover  = { background = MakeTexture(new Color(0.2f, 0.24f, 0.32f)),  textColor = Color.white },
+            hover  = { background = MakeTexture(new Color(0.2f,  0.24f, 0.32f)), textColor = Color.white },
         };
         styleLabel = new GUIStyle(GUI.skin.label)
         {
@@ -132,28 +128,26 @@ public class MabarTurnDemo : MonoBehaviour
     {
         InitStyles();
 
-        // Background
         GUI.color = new Color(0.06f, 0.09f, 0.15f, 1f);
-        GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
+        GUI.DrawTexture(new Rect(0, 0, UnityEngine.Screen.width, UnityEngine.Screen.height), Texture2D.whiteTexture);
         GUI.color = Color.white;
 
-        float w = Mathf.Min(560f, Screen.width - 32f);
-        float x = (Screen.width - w) / 2f;
+        float w = Mathf.Min(560f, UnityEngine.Screen.width - 32f);
+        float x = (UnityEngine.Screen.width - w) / 2f;
         float y = 30f;
 
-        GUILayout.BeginArea(new Rect(x, y, w, Screen.height - 60f));
+        GUILayout.BeginArea(new Rect(x, y, w, UnityEngine.Screen.height - 60f));
         GUILayout.BeginVertical();
 
-        // Header
         GUILayout.Label("MabarinSDK — Turn Demo", styleTitle);
         GUILayout.Label(statusMsg, styleStatus);
         GUILayout.Space(12);
 
         switch (screen)
         {
-            case Screen.Login:  DrawLogin(); break;
-            case Screen.Lobby:  DrawLobby(); break;
-            case Screen.Game:   DrawGame();  break;
+            case GameScreen.Login: DrawLogin(); break;
+            case GameScreen.Lobby: DrawLobby(); break;
+            case GameScreen.Game:  DrawGame();  break;
         }
 
         GUILayout.EndVertical();
@@ -177,7 +171,6 @@ public class MabarTurnDemo : MonoBehaviour
 
     void DrawLobby()
     {
-        // Create room
         GUILayout.BeginVertical(styleBox);
         GUILayout.Label("Buat Room Baru", new GUIStyle(styleLabel) { fontStyle = FontStyle.Bold, fontSize = 13 });
         GUILayout.Space(4);
@@ -191,7 +184,6 @@ public class MabarTurnDemo : MonoBehaviour
 
         GUILayout.Space(10);
 
-        // Join room
         GUILayout.BeginVertical(styleBox);
         GUILayout.Label("Gabung ke Room yang Ada", new GUIStyle(styleLabel) { fontStyle = FontStyle.Bold, fontSize = 13 });
         GUILayout.Space(4);
@@ -213,44 +205,40 @@ public class MabarTurnDemo : MonoBehaviour
     {
         if (currentRoom == null) return;
 
-        bool myTurn = currentRoom.CurrentTurn == myPlayerId;
+        bool myTurn   = currentRoom.CurrentTurn == myPlayerId;
+        var  players  = currentRoom.Players ?? new string[0];
 
-        // Room info
         GUILayout.BeginVertical(styleBox);
         GUILayout.BeginHorizontal();
         GUILayout.Label($"Room: {currentRoom.Id}", styleMono);
         GUILayout.FlexibleSpace();
-        GUILayout.Label($"{currentRoom.Players?.Count ?? 0}/{currentRoom.MaxPlayers} pemain", styleLabel);
+        GUILayout.Label($"{players.Length}/{currentRoom.MaxPlayers} pemain", styleLabel);
         GUILayout.EndHorizontal();
         GUILayout.EndVertical();
 
         GUILayout.Space(8);
 
-        // Player turn list
         GUILayout.BeginVertical(styleBox);
         GUILayout.Label("Urutan Giliran", new GUIStyle(styleLabel) { fontStyle = FontStyle.Bold });
         GUILayout.Space(6);
-        if (currentRoom.Players != null)
+        for (int i = 0; i < players.Length; i++)
         {
-            for (int i = 0; i < currentRoom.Players.Count; i++)
-            {
-                var pid      = currentRoom.Players[i];
-                bool isTurn  = pid == currentRoom.CurrentTurn;
-                bool isMe    = pid == myPlayerId;
-                string label = $"{(isTurn ? "▶  " : "    ")}Player {i + 1}{(isMe ? " (kamu)" : "")}";
-                GUILayout.Label(label, isTurn ? styleTurnActive : styleTurnWaiting, GUILayout.Height(28));
-                GUILayout.Space(2);
-            }
+            var  pid    = players[i];
+            bool isTurn = pid == currentRoom.CurrentTurn;
+            bool isMe   = pid == myPlayerId;
+            string lbl  = $"{(isTurn ? "▶  " : "    ")}Player {i + 1}{(isMe ? " (kamu)" : "")}";
+            GUILayout.Label(lbl, isTurn ? styleTurnActive : styleTurnWaiting, GUILayout.Height(28));
+            GUILayout.Space(2);
         }
         GUILayout.EndVertical();
 
         GUILayout.Space(8);
 
-        // Submit move
         GUILayout.BeginVertical(styleBox);
         if (myTurn)
         {
-            GUILayout.Label("Giliran kamu! Masukkan gerakan:", new GUIStyle(styleLabel) { normal = { textColor = new Color(0.4f, 1f, 0.6f) } });
+            GUILayout.Label("Giliran kamu! Masukkan gerakan:",
+                new GUIStyle(styleLabel) { normal = { textColor = new Color(0.4f, 1f, 0.6f) } });
             GUILayout.Space(4);
             GUILayout.BeginHorizontal();
             moveInput = GUILayout.TextField(moveInput, GUILayout.Height(32), GUILayout.ExpandWidth(true));
@@ -265,10 +253,9 @@ public class MabarTurnDemo : MonoBehaviour
         }
         else
         {
-            GUILayout.Label(
-                $"Menunggu giliran Player {(currentRoom.Players?.IndexOf(currentRoom.CurrentTurn) + 1 ?? 0)}...",
-                new GUIStyle(styleLabel) { normal = { textColor = new Color(0.5f, 0.5f, 0.6f) } }
-            );
+            int waitIdx = System.Array.IndexOf(players, currentRoom.CurrentTurn) + 1;
+            GUILayout.Label($"Menunggu giliran Player {waitIdx}...",
+                new GUIStyle(styleLabel) { normal = { textColor = new Color(0.5f, 0.5f, 0.6f) } });
             if (GUILayout.Button("Refresh sekarang", styleBtnSecondary, GUILayout.Height(28)))
                 StartCoroutine(DoPollOnce());
         }
@@ -276,7 +263,6 @@ public class MabarTurnDemo : MonoBehaviour
 
         GUILayout.Space(8);
 
-        // Move log
         GUILayout.BeginVertical(styleBox);
         GUILayout.Label("Riwayat Giliran", new GUIStyle(styleLabel) { fontStyle = FontStyle.Bold });
         GUILayout.Space(4);
@@ -291,7 +277,6 @@ public class MabarTurnDemo : MonoBehaviour
 
         GUILayout.Space(8);
 
-        // Leave
         if (GUILayout.Button("Keluar dari Room", styleBtnSecondary, GUILayout.Height(30)))
             StartCoroutine(DoLeaveRoom());
     }
@@ -312,11 +297,10 @@ public class MabarTurnDemo : MonoBehaviour
         }
         else
         {
-            var auth  = task.Result;
-            myPlayerId = auth.PlayerId;
-            myToken    = auth.Token;
+            myPlayerId = task.Result.PlayerId;
+            myToken    = task.Result.Token;
             statusMsg  = $"Login berhasil! ID: {Truncate(myPlayerId, 16)}...";
-            screen     = Screen.Lobby;
+            screen     = GameScreen.Lobby;
         }
         actionBusy = false;
     }
@@ -338,8 +322,8 @@ public class MabarTurnDemo : MonoBehaviour
             currentRoom = task.Result;
             moveLog.Clear();
             LogMove($"Room dibuat! ID: <b>{currentRoom.Id}</b>");
-            statusMsg = $"Room ready. Bagikan ID ini ke lawan.";
-            screen    = Screen.Game;
+            statusMsg = "Room ready. Bagikan ID ini ke lawan.";
+            screen    = GameScreen.Game;
             StartPolling();
         }
         actionBusy = false;
@@ -363,7 +347,7 @@ public class MabarTurnDemo : MonoBehaviour
             moveLog.Clear();
             LogMove($"Bergabung ke room <b>{currentRoom.Id}</b>");
             statusMsg = "Berhasil join! Menunggu giliran...";
-            screen    = Screen.Game;
+            screen    = GameScreen.Game;
             StartPolling();
         }
         actionBusy = false;
@@ -377,11 +361,11 @@ public class MabarTurnDemo : MonoBehaviour
         string move = moveInput.Trim();
         moveInput   = "";
 
-        var state = new System.Collections.Generic.Dictionary<string, object>
+        var state = new Dictionary<string, object>
         {
-            { "lastMove",   move },
-            { "movedBy",    myPlayerId },
-            { "movedAt",    System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() },
+            { "lastMove", move },
+            { "movedBy",  myPlayerId },
+            { "movedAt",  System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() },
         };
 
         var task = Multiplayer.SubmitTurn(currentRoom.Id, state);
@@ -395,7 +379,8 @@ public class MabarTurnDemo : MonoBehaviour
         else
         {
             currentRoom = task.Result;
-            int nextIdx = currentRoom.Players?.IndexOf(currentRoom.CurrentTurn) + 1 ?? 0;
+            var players = currentRoom.Players ?? new string[0];
+            int nextIdx = System.Array.IndexOf(players, currentRoom.CurrentTurn) + 1;
             LogMove($"<color=#4ade80>Kamu</color> → <b>{move}</b>");
             statusMsg = $"Giliran dikirim! Sekarang giliran Player {nextIdx}.";
         }
@@ -410,8 +395,9 @@ public class MabarTurnDemo : MonoBehaviour
         {
             var prev = currentRoom;
             currentRoom = task.Result;
+            var players = currentRoom.Players ?? new string[0];
             if (prev?.CurrentTurn != currentRoom.CurrentTurn)
-                LogMove($"Giliran berpindah ke Player {currentRoom.Players?.IndexOf(currentRoom.CurrentTurn) + 1 ?? 0}");
+                LogMove($"Giliran berpindah ke Player {System.Array.IndexOf(players, currentRoom.CurrentTurn) + 1}");
         }
     }
 
@@ -423,22 +409,15 @@ public class MabarTurnDemo : MonoBehaviour
         yield return new WaitUntil(() => task.IsCompleted);
         currentRoom = null;
         moveLog.Clear();
-        screen    = Screen.Lobby;
+        screen    = GameScreen.Lobby;
         statusMsg = "Keluar dari room.";
         actionBusy = false;
     }
 
     // ─── Polling ───────────────────────────────────────────────────────────
 
-    void StartPolling()
-    {
-        if (!isPolling) StartCoroutine(PollLoop());
-    }
-
-    void StopPolling()
-    {
-        isPolling = false;
-    }
+    void StartPolling() { if (!isPolling) StartCoroutine(PollLoop()); }
+    void StopPolling()  { isPolling = false; }
 
     IEnumerator PollLoop()
     {
@@ -450,19 +429,18 @@ public class MabarTurnDemo : MonoBehaviour
 
             var task = Multiplayer.GetRoom(currentRoom.Id);
             yield return new WaitUntil(() => task.IsCompleted);
-
             if (task.Exception != null || task.Result == null) continue;
 
             var updated = task.Result;
             if (updated.CurrentTurn != currentRoom.CurrentTurn)
             {
                 currentRoom = updated;
-                int idx = currentRoom.Players?.IndexOf(currentRoom.CurrentTurn) + 1 ?? 0;
+                var players = currentRoom.Players ?? new string[0];
+                int idx     = System.Array.IndexOf(players, currentRoom.CurrentTurn) + 1;
                 LogMove($"Giliran berpindah → <color=#38bdf8>Player {idx}</color>");
-                if (currentRoom.CurrentTurn == myPlayerId)
-                    statusMsg = "Giliran kamu!";
-                else
-                    statusMsg = $"Menunggu Player {idx}...";
+                statusMsg = currentRoom.CurrentTurn == myPlayerId
+                    ? "Giliran kamu!"
+                    : $"Menunggu Player {idx}...";
             }
             else
             {
