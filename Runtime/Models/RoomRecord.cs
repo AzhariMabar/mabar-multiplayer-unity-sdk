@@ -1,3 +1,6 @@
+using Newtonsoft.Json;
+using Mabar.Multiplayer.Utils;
+
 namespace Mabar.Multiplayer.Models
 {
     public class RoomRecord
@@ -16,6 +19,7 @@ namespace Mabar.Multiplayer.Models
 
         // Raw JSON string — deserialize to your own struct:
         // JsonUtility.FromJson<MyState>(room.State)
+        [JsonConverter(typeof(RawJsonConverter))]
         public string   State         { get; set; }
     }
 }
