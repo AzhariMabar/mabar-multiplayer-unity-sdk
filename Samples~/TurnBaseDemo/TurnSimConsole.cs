@@ -172,7 +172,7 @@ public class TurnSimConsole : MonoBehaviour
                 }
 
                 var updated  = turnTask.Result;
-                int nextIdx  = updated.Players?.IndexOf(updated.CurrentTurn) ?? -1;
+                int nextIdx  = updated.Players != null ? System.Array.IndexOf(updated.Players, updated.CurrentTurn) : -1;
                 string nextName = nextIdx >= 0 && nextIdx < players.Count ? players[nextIdx].Name : "?";
                 Log($"[{player.Name}] OK. Giliran selanjutnya: [{nextName}]");
 
