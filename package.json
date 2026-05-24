@@ -5,5 +5,7 @@
   "unity": "2021.3",
   "description": "Lightweight Unity multiplayer SDK for turn-based and casual games.",
   "keywords": ["multiplayer", "turn-based", "unity", "rpc", "socket"],
-  "dependencies": {}
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.2.1"
+  }
 }

@@ -1,17 +1,25 @@
-using System.Text.Json;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
 
 namespace Mabar.Multiplayer.Utils
 {
     public static class JsonUtil
     {
-        public static T Deserialize<T>(string json)
+        private static readonly JsonSerializerSettings ReadSettings = new JsonSerializerSettings
         {
-            return JsonSerializer.Deserialize<T>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-        }
+            ContractResolver = new CamelCasePropertyNamesContractResolver(),
+        };
 
-        public static string Serialize(object value)
+        private static readonly JsonSerializerSettings WriteSettings = new JsonSerializerSettings
         {
-            return JsonSerializer.Serialize(value, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
-        }
+            ContractResolver = new CamelCasePropertyNamesContractResolver(),
+            NullValueHandling = NullValueHandling.Ignore,
+        };
+
+        public static T Deserialize<T>(string json) =>
+            JsonConvert.DeserializeObject<T>(json, ReadSettings);
+
+        public static string Serialize(object value) =>
+            JsonConvert.SerializeObject(value, WriteSettings);
     }
 }
