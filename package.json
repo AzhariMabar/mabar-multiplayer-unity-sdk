@@ -7,5 +7,12 @@
   "keywords": ["multiplayer", "turn-based", "unity", "rpc", "socket"],
   "dependencies": {
     "com.unity.nuget.newtonsoft-json": "3.2.1"
-  }
+  },
+  "samples": [
+    {
+      "displayName": "Turn Base Demo",
+      "description": "OnGUI turn-based game demo + headless A/B/C/D console simulation.",
+      "path": "Samples~/TurnBaseDemo"
+    }
+  ]
 }
