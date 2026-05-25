@@ -13,7 +13,7 @@ namespace Mabar.Multiplayer.Editor
         public static void ShowWindow()
         {
             var window = GetWindow<SetupWizardWindow>("Mabar Setup");
-            window.minSize = new Vector2(420, 300);
+            window.minSize = new Vector2(420, 320);
         }
 
         private void OnGUI()
@@ -24,7 +24,7 @@ namespace Mabar.Multiplayer.Editor
 
             GUILayout.Space(12);
             GUILayout.Label("Mabar Multiplayer SDK", titleStyle);
-            GUILayout.Label("Like Photon, but yours — paste AppKey, start building.", subStyle);
+            GUILayout.Label("Self-hosted multiplayer — paste AppKey, start building.", subStyle);
             GUILayout.Space(14);
 
             step = GUILayout.Toolbar(step, new[] { "1. Create Asset", "2. Set App Key", "3. Done" });
@@ -43,7 +43,8 @@ namespace Mabar.Multiplayer.Editor
             GUILayout.Label("Create a Settings Asset for your project:", labelStyle);
             GUILayout.Space(8);
 
-            settings = EditorGUILayout.ObjectField("Settings Asset", settings, typeof(MultiplayerSettings), false) as MultiplayerSettings;
+            settings = EditorGUILayout.ObjectField("Settings Asset", settings,
+                typeof(MultiplayerSettings), false) as MultiplayerSettings;
 
             GUILayout.Space(8);
             if (settings == null)
@@ -74,7 +75,7 @@ namespace Mabar.Multiplayer.Editor
             }
 
             GUILayout.Label("Enter your App Key:", labelStyle);
-            GUILayout.Label("Get this from the Mabar dashboard after registering your game.\nPaste it here — no Firebase, no backend setup needed.", subStyle);
+            GUILayout.Label("Get this from the Mabar dashboard after registering your game.", subStyle);
             GUILayout.Space(10);
 
             EditorGUI.BeginChangeCheck();
@@ -87,13 +88,13 @@ namespace Mabar.Multiplayer.Editor
             }
 
             GUILayout.Space(6);
-            GUILayout.Label("API URL (leave default for hosted Mabar API):", subStyle);
+            GUILayout.Label("Server URL (default: wss://cloud.mabar.studio):", subStyle);
             EditorGUI.BeginChangeCheck();
-            var newApi = EditorGUILayout.TextField("API URL", settings.ApiUrl);
+            var newUrl = EditorGUILayout.TextField("Server URL", settings.ServerUrl);
             if (EditorGUI.EndChangeCheck())
             {
-                Undo.RecordObject(settings, "Set ApiUrl");
-                settings.ApiUrl = newApi;
+                Undo.RecordObject(settings, "Set ServerUrl");
+                settings.ServerUrl = newUrl;
                 EditorUtility.SetDirty(settings);
             }
 
@@ -115,15 +116,15 @@ namespace Mabar.Multiplayer.Editor
             GUILayout.Space(8);
 
             GUILayout.Label("Summary:", labelStyle);
-            EditorGUILayout.LabelField("App Key", $"{settings.AppKey[..System.Math.Min(8, settings.AppKey.Length)]}...");
-            EditorGUILayout.LabelField("API URL", settings.ApiUrl);
+            EditorGUILayout.LabelField("App Key",    $"{settings.AppKey[..System.Math.Min(8, settings.AppKey.Length)]}...");
+            EditorGUILayout.LabelField("Server URL", settings.ServerUrl);
 
             GUILayout.Space(10);
-            GUILayout.Label("In your game script:", subStyle);
+            GUILayout.Label("Quick start:", subStyle);
 
             var codeStyle = new GUIStyle(EditorStyles.helpBox) { fontStyle = FontStyle.Italic };
             GUILayout.Label(
-                "Multiplayer.Initialize(Settings);\nvar auth = await Multiplayer.LoginGuest();\nvar room = await Multiplayer.CreateRoom(\"Match\", maxPlayers: 2);\n\n// Poll opponent turn:\nvar state = await Multiplayer.GetRoom(room.Id);\n\n// Submit your move:\nawait Multiplayer.SubmitTurn(room.Id, new Dictionary<string,object>{{ \"move\", \"e4\" }});",
+                "Multiplayer.Initialize(Settings);\nawait Multiplayer.Connect(\"PlayerName\");\n\nvar room = await Multiplayer.CreateRoom(\"mabar_room\");\nroom.On<JObject>(\"event\", data => Debug.Log(data));\nawait room.Send(\"move\", new { idx = 4 });",
                 codeStyle);
 
             GUILayout.Space(10);
