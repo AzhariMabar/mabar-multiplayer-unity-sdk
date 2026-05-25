@@ -2,15 +2,18 @@ using UnityEngine;
 
 namespace Mabar.Multiplayer.Models
 {
-    [CreateAssetMenu(fileName = "MabarSettings", menuName = "Mabar Multiplayer/Settings")]
+    /// <summary>
+    /// Mabarin SDK settings — create via Assets → Create → Mabarin → Settings.
+    /// </summary>
+    [CreateAssetMenu(fileName = "MabarinSettings", menuName = "Mabarin/Settings")]
     public class MultiplayerSettings : ScriptableObject
     {
-        [Header("Mabar App Key")]
-        [Tooltip("Your unique App Key. Get it from the SDK owner — paste here, done.")]
-        public string AppKey = "";
+        [Header("Server")]
+        [Tooltip("WebSocket server URL. ws://localhost:2567 for local, wss://cloud.mabar.studio for cloud.")]
+        public string ServerUrl = "wss://cloud.mabar.studio";
 
-        [Header("Backend URL")]
-        [Tooltip("Mabar API endpoint. Leave default for hosted, or http://localhost:4000 for local dev.")]
-        public string ApiUrl = "https://api.mabar.studio";
+        [Header("App Key")]
+        [Tooltip("Your Mabarin AppKey. Get one at mabarin.studio or via POST /apps/register.")]
+        public string AppKey = "";
     }
 }

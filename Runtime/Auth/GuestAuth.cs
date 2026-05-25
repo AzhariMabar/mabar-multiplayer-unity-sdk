@@ -42,23 +42,5 @@ namespace Mabar.Multiplayer.Auth
             return JsonUtil.Deserialize<AuthResponse>(req.downloadHandler.text);
         }
 
-        public async Task<AuthResponse> RefreshAsync(string token)
-        {
-            using var req = new UnityWebRequest($"{apiUrl}/auth/refresh", "POST")
-            {
-                uploadHandler   = new UploadHandlerRaw(Encoding.UTF8.GetBytes("{}")),
-                downloadHandler = new DownloadHandlerBuffer(),
-            };
-            req.SetRequestHeader("Content-Type", "application/json");
-            req.SetRequestHeader("X-Mabar-App-Key", appKey);
-            req.SetRequestHeader("Authorization", $"Bearer {token}");
-
-            await req.SendWebRequest();
-
-            if (req.result != UnityWebRequest.Result.Success)
-                throw new Exception($"[MabarSDK] Token refresh failed: {req.error} — {req.downloadHandler.text}");
-
-            return JsonUtil.Deserialize<AuthResponse>(req.downloadHandler.text);
-        }
     }
 }
