@@ -13,6 +13,12 @@
   "precompiledReferences": [],
   "autoReferenced": true,
   "defineConstraints": [],
-  "versionDefines": [],
+  "versionDefines": [
+    {
+      "name": "io.colyseus",
+      "expression": "",
+      "define": "MABAR_COLYSEUS"
+    }
+  ],
   "noEngineReferences": false
 }
