@@ -5,7 +5,7 @@ using Mabar.Multiplayer.Core;
 using Mabar.Multiplayer.Models;
 using Newtonsoft.Json.Linq;
 
-namespace Mabar.Multiplayer.Samples
+namespace MabarinSamples
 {
     /// <summary>
     /// Chat Room — cross-platform Unity ↔ Web.

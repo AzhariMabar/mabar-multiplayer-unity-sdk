@@ -4,7 +4,7 @@ using Mabar.Multiplayer.Core;
 using Mabar.Multiplayer.Models;
 using Newtonsoft.Json.Linq;
 
-namespace Mabar.Multiplayer.Samples
+namespace MabarinSamples
 {
     /// <summary>
     /// TicTacToe 1v1 — cross-platform Unity ↔ Web.
