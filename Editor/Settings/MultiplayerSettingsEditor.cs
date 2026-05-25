@@ -51,10 +51,10 @@ namespace Mabar.Multiplayer.Editor
             {
                 if (string.IsNullOrEmpty(settings.AppKey))
                     EditorUtility.DisplayDialog("Mabar SDK", "AppKey is empty! Enter your App Key.", "OK");
-                else if (string.IsNullOrEmpty(settings.ApiUrl))
-                    EditorUtility.DisplayDialog("Mabar SDK", "ApiUrl is required.", "OK");
                 else
-                    EditorUtility.DisplayDialog("Mabar SDK", $"Settings OK!\n\nAppKey: {settings.AppKey[..System.Math.Min(8, settings.AppKey.Length)]}...\nAPI:    {settings.ApiUrl}", "Great!");
+                    EditorUtility.DisplayDialog("Mabar SDK",
+                        $"Settings OK!\n\nAppKey: {settings.AppKey[..System.Math.Min(8, settings.AppKey.Length)]}...\nServer: {settings.ServerUrl}",
+                        "Great!");
             }
         }
     }
