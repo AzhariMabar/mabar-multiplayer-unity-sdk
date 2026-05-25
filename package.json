@@ -1,18 +1,29 @@
 {
   "name": "com.mabar.multiplayer",
   "displayName": "Mabar Multiplayer SDK",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "unity": "2021.3",
   "description": "Lightweight Unity multiplayer SDK for turn-based and casual games.",
   "keywords": ["multiplayer", "turn-based", "unity", "rpc", "socket"],
   "dependencies": {
-    "com.unity.nuget.newtonsoft-json": "3.2.1"
+    "com.unity.nuget.newtonsoft-json": "3.2.1",
+    "io.colyseus": "https://github.com/colyseus/colyseus-unity-sdk.git#upm"
   },
   "samples": [
     {
       "displayName": "Turn Base Demo",
       "description": "OnGUI turn-based game demo + headless A/B/C/D console simulation.",
       "path": "Samples~/TurnBaseDemo"
+    },
+    {
+      "displayName": "Chat Room",
+      "description": "Cross-platform chat room — Unity ↔ Web. Uses mabar_room (relay). Share Room ID ke browser.",
+      "path": "Samples~/ChatRoom"
+    },
+    {
+      "displayName": "Tic-Tac-Toe",
+      "description": "Cross-platform TicTacToe — Unity ↔ Web. Pakai mabar_room, room bisa di-share antar platform.",
+      "path": "Samples~/TicTacToe"
     }
   ]
 }
