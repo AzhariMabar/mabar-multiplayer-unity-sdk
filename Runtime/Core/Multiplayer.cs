@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Mabar.Multiplayer.Core.Internal;
+using Mabar.Multiplayer.Models;
 using UnityEngine;
 
 namespace Mabar.Multiplayer.Core

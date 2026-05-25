@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Mabar.Multiplayer.Core;
+using Mabar.Multiplayer.Models;
 using Newtonsoft.Json.Linq;
 
 namespace Mabar.Multiplayer.Samples

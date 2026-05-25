@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using Mabar.Multiplayer.Core;
+using Mabar.Multiplayer.Models;
 using Newtonsoft.Json.Linq;
 
 namespace Mabar.Multiplayer.Samples
