@@ -1,468 +1,468 @@
-using System.Collections;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Mabar.Multiplayer.Core;
 using Mabar.Multiplayer.Models;
+using Newtonsoft.Json.Linq;
 
 /// <summary>
-/// MabarinSDK — Turn-based Demo
+/// Mabarin SDK — Turn-Based Demo (WebSocket)
 ///
 /// Setup:
 ///   1. Buat empty GameObject di scene, attach script ini
-///   2. Assign MabarSettings asset ke field Settings di Inspector
-///   3. Play — UI otomatis muncul
+///   2. Assign MultiplayerSettings asset ke field Settings di Inspector
+///   3. Play — UI muncul, isi nama lalu Connect
 /// </summary>
 public class MabarTurnDemo : MonoBehaviour
 {
     public MultiplayerSettings Settings;
 
-    // ─── State ─────────────────────────────────────────────────────────────
+    // ─── State ─────────────────────────────────────────────────────────────────
 
-    enum GameScreen { Login, Lobby, Game }
-    GameScreen screen = GameScreen.Login;
+    enum Screen { Connect, Lobby, Game }
+    Screen _screen = Screen.Connect;
 
-    string statusMsg   = "Belum login.";
-    string roomIdInput = "";
-    string moveInput   = "";
-    string myPlayerId  = "";
-    string myToken     = "";
+    MabarinRoom _room;
 
-    RoomRecord currentRoom;
-    List<string> moveLog = new List<string>();
+    string _status        = "Isi nama lalu klik Connect.";
+    string _nameInput     = "Player";
+    string _roomIdInput   = "";
+    string _moveInput     = "";
+    string _mySessionId   = "";
+    string _currentTurn   = "";       // sessionId siapa yang giliran
+    string _currentTurnName = "";
+    bool   _isHost        = false;
+    bool   _gameStarted   = false;
+    bool   _busy          = false;
 
-    bool isPolling  = false;
-    bool actionBusy = false;
+    // Players: { id, name }
+    readonly List<(string id, string name)> _players = new();
+    readonly List<string> _log = new();
+    Vector2 _logScroll;
 
-    // ─── Styles ────────────────────────────────────────────────────────────
+    // ─── GUI Styles ────────────────────────────────────────────────────────────
 
-    GUIStyle styleTitle, styleStatus, styleBox, styleBtnPrimary, styleBtnSecondary,
-             styleLabel, styleMono, styleTurnActive, styleTurnWaiting, styleLog;
-    bool stylesReady = false;
-    Vector2 logScroll;
+    GUIStyle _styleTitle, _styleStatus, _styleBox, _styleBtnPrimary,
+             _styleBtnSecondary, _styleBtnDanger, _styleLabel, _styleMono,
+             _styleTurnActive, _styleTurnWaiting, _styleLog;
+    bool _stylesReady;
 
-    // ─── Unity ─────────────────────────────────────────────────────────────
+    // ─── Unity ────────────────────────────────────────────────────────────────
 
     void Start()
     {
         if (Settings == null)
         {
-            statusMsg = "ERROR: Assign MabarSettings di Inspector!";
+            _status = "ERROR: Assign MultiplayerSettings di Inspector!";
             return;
         }
         Multiplayer.Initialize(Settings);
-        statusMsg = "SDK siap. Tekan Login untuk mulai.";
-    }
-
-    void InitStyles()
-    {
-        if (stylesReady) return;
-        stylesReady = true;
-
-        styleTitle = new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 22, fontStyle = FontStyle.Bold,
-            normal = { textColor = new Color(0.55f, 0.85f, 1f) },
-            alignment = TextAnchor.MiddleCenter,
-        };
-        styleStatus = new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 12, wordWrap = true,
-            normal = { textColor = new Color(0.6f, 0.6f, 0.6f) },
-            alignment = TextAnchor.MiddleCenter,
-        };
-        styleBox = new GUIStyle(GUI.skin.box)
-        {
-            normal  = { background = MakeTexture(new Color(0.08f, 0.11f, 0.18f, 0.97f)) },
-            padding = new RectOffset(20, 20, 16, 16),
-        };
-        styleBtnPrimary = new GUIStyle(GUI.skin.button)
-        {
-            fontSize = 13, fontStyle = FontStyle.Bold,
-            normal   = { background = MakeTexture(new Color(0.05f, 0.55f, 0.9f)),  textColor = Color.white },
-            hover    = { background = MakeTexture(new Color(0.1f,  0.65f, 1f)),    textColor = Color.white },
-            active   = { background = MakeTexture(new Color(0.0f,  0.4f,  0.75f)), textColor = Color.white },
-            padding  = new RectOffset(12, 12, 8, 8),
-        };
-        styleBtnSecondary = new GUIStyle(styleBtnPrimary)
-        {
-            normal = { background = MakeTexture(new Color(0.15f, 0.18f, 0.25f)), textColor = new Color(0.7f, 0.7f, 0.7f) },
-            hover  = { background = MakeTexture(new Color(0.2f,  0.24f, 0.32f)), textColor = Color.white },
-        };
-        styleLabel = new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 12, normal = { textColor = new Color(0.75f, 0.75f, 0.75f) },
-        };
-        styleMono = new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 11, font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"),
-            normal = { textColor = new Color(0.55f, 0.85f, 1f) },
-        };
-        styleTurnActive = new GUIStyle(GUI.skin.box)
-        {
-            fontSize = 13, fontStyle = FontStyle.Bold,
-            normal = {
-                background = MakeTexture(new Color(0.05f, 0.35f, 0.15f, 0.8f)),
-                textColor  = new Color(0.4f, 1f, 0.6f),
-            },
-            alignment = TextAnchor.MiddleLeft,
-            padding   = new RectOffset(12, 8, 6, 6),
-        };
-        styleTurnWaiting = new GUIStyle(GUI.skin.box)
-        {
-            fontSize = 12,
-            normal = {
-                background = MakeTexture(new Color(0.1f, 0.12f, 0.18f, 0.6f)),
-                textColor  = new Color(0.45f, 0.45f, 0.55f),
-            },
-            alignment = TextAnchor.MiddleLeft,
-            padding   = new RectOffset(12, 8, 6, 6),
-        };
-        styleLog = new GUIStyle(GUI.skin.label)
-        {
-            fontSize  = 11, wordWrap = true, richText = true,
-            normal    = { textColor = new Color(0.6f, 0.65f, 0.7f) },
-        };
     }
 
     void OnGUI()
     {
-        InitStyles();
+        BuildStyles();
 
-        GUI.color = new Color(0.06f, 0.09f, 0.15f, 1f);
-        GUI.DrawTexture(new Rect(0, 0, UnityEngine.Screen.width, UnityEngine.Screen.height), Texture2D.whiteTexture);
+        // Background
+        GUI.color = new Color(0.05f, 0.07f, 0.11f);
+        GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
         GUI.color = Color.white;
 
-        float w = Mathf.Min(560f, UnityEngine.Screen.width - 32f);
-        float x = (UnityEngine.Screen.width - w) / 2f;
-        float y = 30f;
+        float w = Mathf.Min(540f, Screen.width - 32f);
+        float x = (Screen.width - w) / 2f;
 
-        GUILayout.BeginArea(new Rect(x, y, w, UnityEngine.Screen.height - 60f));
+        GUILayout.BeginArea(new Rect(x, 24f, w, Screen.height - 48f));
         GUILayout.BeginVertical();
 
-        GUILayout.Label("MabarinSDK — Turn Demo", styleTitle);
-        GUILayout.Label(statusMsg, styleStatus);
+        GUILayout.Label("Mabarin SDK — Turn Demo", _styleTitle);
+        GUILayout.Label(_status, _styleStatus);
         GUILayout.Space(12);
 
-        switch (screen)
+        switch (_screen)
         {
-            case GameScreen.Login: DrawLogin(); break;
-            case GameScreen.Lobby: DrawLobby(); break;
-            case GameScreen.Game:  DrawGame();  break;
+            case Screen.Connect: DrawConnect(); break;
+            case Screen.Lobby:   DrawLobby();   break;
+            case Screen.Game:    DrawGame();    break;
         }
 
         GUILayout.EndVertical();
         GUILayout.EndArea();
     }
 
-    // ─── Screens ───────────────────────────────────────────────────────────
+    // ─── Screens ───────────────────────────────────────────────────────────────
 
-    void DrawLogin()
+    void DrawConnect()
     {
-        GUILayout.BeginVertical(styleBox);
-        GUILayout.Label("Klik Login untuk masuk sebagai guest player.", styleLabel);
-        GUILayout.Label("Tiap instance Unity = satu pemain berbeda.", styleLabel);
-        GUILayout.Space(10);
-        GUI.enabled = !actionBusy;
-        if (GUILayout.Button(actionBusy ? "Logging in..." : "Login sebagai Guest", styleBtnPrimary, GUILayout.Height(40)))
-            StartCoroutine(DoLogin());
+        GUILayout.BeginVertical(_styleBox);
+        GUILayout.Label("Nama Pemain", _styleLabel);
+        _nameInput = GUILayout.TextField(_nameInput, 30, GUILayout.Height(32));
+        GUILayout.Space(8);
+        GUI.enabled = !_busy && !string.IsNullOrEmpty(_nameInput.Trim());
+        if (GUILayout.Button(_busy ? "Menghubungkan..." : "Connect", _styleBtnPrimary, GUILayout.Height(38)))
+            DoConnect();
         GUI.enabled = true;
         GUILayout.EndVertical();
     }
 
     void DrawLobby()
     {
-        GUILayout.BeginVertical(styleBox);
-        GUILayout.Label("Buat Room Baru", new GUIStyle(styleLabel) { fontStyle = FontStyle.Bold, fontSize = 13 });
+        GUILayout.BeginVertical(_styleBox);
+        GUILayout.Label("Buat Room Baru", BoldLabel());
         GUILayout.Space(4);
-        GUILayout.Label("Kamu jadi host. Bagikan Room ID ke pemain lain.", styleLabel);
-        GUILayout.Space(8);
-        GUI.enabled = !actionBusy;
-        if (GUILayout.Button(actionBusy ? "..." : "Buat Room (max 4 pemain)", styleBtnPrimary, GUILayout.Height(36)))
-            StartCoroutine(DoCreateRoom());
+        GUILayout.Label("Kamu jadi host. Bagikan Room ID ke pemain lain.", _styleLabel);
+        GUILayout.Space(6);
+        GUI.enabled = !_busy;
+        if (GUILayout.Button(_busy ? "..." : "Buat Room (turn_room)", _styleBtnPrimary, GUILayout.Height(36)))
+            DoCreateRoom();
         GUI.enabled = true;
         GUILayout.EndVertical();
 
         GUILayout.Space(10);
 
-        GUILayout.BeginVertical(styleBox);
-        GUILayout.Label("Gabung ke Room yang Ada", new GUIStyle(styleLabel) { fontStyle = FontStyle.Bold, fontSize = 13 });
+        GUILayout.BeginVertical(_styleBox);
+        GUILayout.Label("Gabung ke Room", BoldLabel());
         GUILayout.Space(4);
-        GUILayout.Label("Paste Room ID dari host:", styleLabel);
+        GUILayout.Label("Paste Room ID dari host:", _styleLabel);
         GUILayout.Space(4);
-        roomIdInput = GUILayout.TextField(roomIdInput, GUILayout.Height(32));
+        _roomIdInput = GUILayout.TextField(_roomIdInput, GUILayout.Height(32));
         GUILayout.Space(6);
-        GUI.enabled = !actionBusy && !string.IsNullOrEmpty(roomIdInput);
-        if (GUILayout.Button(actionBusy ? "..." : "Join Room", styleBtnSecondary, GUILayout.Height(36)))
-            StartCoroutine(DoJoinRoom(roomIdInput.Trim()));
+        GUI.enabled = !_busy && !string.IsNullOrEmpty(_roomIdInput);
+        if (GUILayout.Button(_busy ? "..." : "Join Room", _styleBtnSecondary, GUILayout.Height(36)))
+            DoJoinRoom(_roomIdInput.Trim());
         GUI.enabled = true;
         GUILayout.EndVertical();
-
-        GUILayout.Space(8);
-        GUILayout.Label($"Player ID kamu: {myPlayerId}", styleMono);
     }
 
     void DrawGame()
     {
-        if (currentRoom == null) return;
-
-        bool myTurn   = currentRoom.CurrentTurn == myPlayerId;
-        var  players  = currentRoom.Players ?? new string[0];
-
-        GUILayout.BeginVertical(styleBox);
+        // ── Room ID ──
+        GUILayout.BeginVertical(_styleBox);
         GUILayout.BeginHorizontal();
-        GUILayout.Label($"Room: {currentRoom.Id}", styleMono);
-        GUILayout.FlexibleSpace();
-        GUILayout.Label($"{players.Length}/{currentRoom.MaxPlayers} pemain", styleLabel);
+        GUILayout.Label("Room:", _styleLabel, GUILayout.Width(46));
+        GUILayout.Label(_room?.Id ?? "—", _styleMono);
         GUILayout.EndHorizontal();
         GUILayout.EndVertical();
 
         GUILayout.Space(8);
 
-        GUILayout.BeginVertical(styleBox);
-        GUILayout.Label("Urutan Giliran", new GUIStyle(styleLabel) { fontStyle = FontStyle.Bold });
+        // ── Players ──
+        GUILayout.BeginVertical(_styleBox);
+        GUILayout.Label("Pemain", BoldLabel());
         GUILayout.Space(6);
-        for (int i = 0; i < players.Length; i++)
+        foreach (var (id, name) in _players)
         {
-            var  pid    = players[i];
-            bool isTurn = pid == currentRoom.CurrentTurn;
-            bool isMe   = pid == myPlayerId;
-            string lbl  = $"{(isTurn ? "▶  " : "    ")}Player {i + 1}{(isMe ? " (kamu)" : "")}";
-            GUILayout.Label(lbl, isTurn ? styleTurnActive : styleTurnWaiting, GUILayout.Height(28));
+            bool isTurn = _gameStarted && id == _currentTurn;
+            bool isMe   = id == _mySessionId;
+            string lbl  = (isTurn ? "▶  " : "    ") + name + (isMe ? " (kamu)" : "");
+            GUILayout.Label(lbl, isTurn ? _styleTurnActive : _styleTurnWaiting, GUILayout.Height(28));
             GUILayout.Space(2);
         }
-        GUILayout.EndVertical();
 
-        GUILayout.Space(8);
-
-        GUILayout.BeginVertical(styleBox);
-        if (myTurn)
+        if (!_gameStarted && _isHost && _players.Count >= 2)
         {
-            GUILayout.Label("Giliran kamu! Masukkan gerakan:",
-                new GUIStyle(styleLabel) { normal = { textColor = new Color(0.4f, 1f, 0.6f) } });
-            GUILayout.Space(4);
-            GUILayout.BeginHorizontal();
-            moveInput = GUILayout.TextField(moveInput, GUILayout.Height(32), GUILayout.ExpandWidth(true));
             GUILayout.Space(6);
-            GUI.enabled = !actionBusy && !string.IsNullOrEmpty(moveInput.Trim());
-            if (GUILayout.Button(actionBusy ? "..." : "Kirim", styleBtnPrimary, GUILayout.Width(70), GUILayout.Height(32)))
-                StartCoroutine(DoSubmitTurn());
-            GUI.enabled = true;
-            GUILayout.EndHorizontal();
-            GUILayout.Space(4);
-            GUILayout.Label("Contoh: 'e4', 'draw card', 'skip', 'roll 6'", styleStatus);
-        }
-        else
-        {
-            int waitIdx = System.Array.IndexOf(players, currentRoom.CurrentTurn) + 1;
-            GUILayout.Label($"Menunggu giliran Player {waitIdx}...",
-                new GUIStyle(styleLabel) { normal = { textColor = new Color(0.5f, 0.5f, 0.6f) } });
-            if (GUILayout.Button("Refresh sekarang", styleBtnSecondary, GUILayout.Height(28)))
-                StartCoroutine(DoPollOnce());
+            if (GUILayout.Button("Mulai Game", _styleBtnPrimary, GUILayout.Height(34)))
+                _room?.Send("start_game");
         }
         GUILayout.EndVertical();
 
         GUILayout.Space(8);
 
-        GUILayout.BeginVertical(styleBox);
-        GUILayout.Label("Riwayat Giliran", new GUIStyle(styleLabel) { fontStyle = FontStyle.Bold });
-        GUILayout.Space(4);
-        logScroll = GUILayout.BeginScrollView(logScroll, GUILayout.Height(120));
-        if (moveLog.Count == 0)
-            GUILayout.Label("Belum ada gerakan.", styleLog);
+        // ── Turn panel ──
+        GUILayout.BeginVertical(_styleBox);
+        bool myTurn = _gameStarted && _mySessionId == _currentTurn;
+
+        if (!_gameStarted)
+            GUILayout.Label("Menunggu game dimulai...", _styleLabel);
+        else if (myTurn)
+        {
+            GUILayout.Label("Giliran kamu!",
+                new GUIStyle(_styleLabel) { normal = { textColor = new Color(0.24f, 1f, 0.37f) } });
+            GUILayout.Space(6);
+            GUILayout.BeginHorizontal();
+            _moveInput = GUILayout.TextField(_moveInput, GUILayout.Height(32), GUILayout.ExpandWidth(true));
+            GUILayout.Space(6);
+            if (GUILayout.Button("Akhiri Giliran", _styleBtnPrimary, GUILayout.Width(120), GUILayout.Height(32)))
+                DoEndTurn();
+            GUILayout.EndHorizontal();
+            GUILayout.Label("Isi gerakan (opsional), lalu Akhiri Giliran.", _styleStatus);
+        }
         else
-            for (int i = moveLog.Count - 1; i >= 0; i--)
-                GUILayout.Label(moveLog[i], styleLog);
+        {
+            GUILayout.Label("Menunggu giliran " + _currentTurnName + "...",
+                new GUIStyle(_styleLabel) { normal = { textColor = new Color(0.6f, 0.6f, 0.7f) } });
+        }
+        GUILayout.EndVertical();
+
+        GUILayout.Space(8);
+
+        // ── Log ──
+        GUILayout.BeginVertical(_styleBox);
+        GUILayout.Label("Log", BoldLabel());
+        GUILayout.Space(4);
+        _logScroll = GUILayout.BeginScrollView(_logScroll, GUILayout.Height(110));
+        for (int i = _log.Count - 1; i >= 0; i--)
+            GUILayout.Label(_log[i], _styleLog);
         GUILayout.EndScrollView();
         GUILayout.EndVertical();
 
         GUILayout.Space(8);
-
-        if (GUILayout.Button("Keluar dari Room", styleBtnSecondary, GUILayout.Height(30)))
-            StartCoroutine(DoLeaveRoom());
+        if (GUILayout.Button("Keluar Room", _styleBtnDanger, GUILayout.Height(30)))
+            DoLeave();
     }
 
-    // ─── Actions ───────────────────────────────────────────────────────────
+    // ─── Actions ───────────────────────────────────────────────────────────────
 
-    IEnumerator DoLogin()
+    async void DoConnect()
     {
-        actionBusy = true;
-        statusMsg  = "Logging in...";
-
-        var task = Multiplayer.LoginGuest();
-        yield return new WaitUntil(() => task.IsCompleted);
-
-        if (task.Exception != null)
+        _busy = true;
+        _status = "Menghubungkan...";
+        try
         {
-            statusMsg = $"Login gagal: {task.Exception.GetBaseException().Message}";
+            await Multiplayer.Connect(_nameInput.Trim());
+            _status = "Terhubung sebagai " + Multiplayer.PlayerName + ".";
+            _screen = Screen.Lobby;
         }
+        catch (Exception e) { _status = "Gagal: " + e.Message; }
+        _busy = false;
+    }
+
+    async void DoCreateRoom()
+    {
+        _busy = true;
+        _status = "Membuat room...";
+        try
+        {
+            _room = await Multiplayer.CreateRoom("turn_room");
+            _isHost = true;
+            _mySessionId = _room.SessionId;
+            RegisterRoomEvents();
+            _screen = Screen.Game;
+            _status = "Room dibuat! Bagikan Room ID ke pemain lain.";
+            AddLog("Room dibuat. Room ID: " + _room.Id);
+        }
+        catch (Exception e) { _status = "Gagal buat room: " + e.Message; }
+        _busy = false;
+    }
+
+    async void DoJoinRoom(string roomId)
+    {
+        _busy = true;
+        _status = "Bergabung...";
+        try
+        {
+            _room = await Multiplayer.JoinRoom(roomId);
+            _isHost = false;
+            _mySessionId = _room.SessionId;
+            RegisterRoomEvents();
+            _screen = Screen.Game;
+            _status = "Bergabung ke room " + roomId + ".";
+            AddLog("Bergabung ke room.");
+        }
+        catch (Exception e) { _status = "Gagal join: " + e.Message; }
+        _busy = false;
+    }
+
+    void DoEndTurn()
+    {
+        string move = _moveInput.Trim();
+        _moveInput = "";
+        if (!string.IsNullOrEmpty(move))
+            _room?.Send("end_turn", new { move });
         else
-        {
-            myPlayerId = task.Result.PlayerId;
-            myToken    = task.Result.Token;
-            statusMsg  = $"Login berhasil! ID: {Truncate(myPlayerId, 16)}...";
-            screen     = GameScreen.Lobby;
-        }
-        actionBusy = false;
+            _room?.Send("end_turn", new { });
     }
 
-    IEnumerator DoCreateRoom()
+    async void DoLeave()
     {
-        actionBusy = true;
-        statusMsg  = "Membuat room...";
-
-        var task = Multiplayer.CreateRoom("Sesi Mabar", maxPlayers: 4);
-        yield return new WaitUntil(() => task.IsCompleted);
-
-        if (task.Exception != null)
-        {
-            statusMsg = $"Gagal buat room: {task.Exception.GetBaseException().Message}";
-        }
-        else
-        {
-            currentRoom = task.Result;
-            moveLog.Clear();
-            LogMove($"Room dibuat! ID: <b>{currentRoom.Id}</b>");
-            statusMsg = "Room ready. Bagikan ID ini ke lawan.";
-            screen    = GameScreen.Game;
-            StartPolling();
-        }
-        actionBusy = false;
+        if (_room != null) { await _room.Leave(); _room = null; }
+        _players.Clear();
+        _log.Clear();
+        _currentTurn = "";
+        _currentTurnName = "";
+        _gameStarted = false;
+        _isHost = false;
+        _screen = Screen.Lobby;
+        _status = "Keluar dari room.";
     }
 
-    IEnumerator DoJoinRoom(string roomId)
+    // ─── Room events ───────────────────────────────────────────────────────────
+
+    void RegisterRoomEvents()
     {
-        actionBusy = true;
-        statusMsg  = $"Joining room {Truncate(roomId, 12)}...";
-
-        var task = Multiplayer.JoinRoom(roomId);
-        yield return new WaitUntil(() => task.IsCompleted);
-
-        if (task.Exception != null)
+        _room.On("room_joined", (JToken data) =>
         {
-            statusMsg = $"Gagal join: {task.Exception.GetBaseException().Message}";
-        }
-        else
+            var rawPlayers = data["players"] as JArray;
+            RefreshPlayerList(rawPlayers);
+        });
+
+        _room.On("player_joined", (JToken data) =>
         {
-            currentRoom = task.Result;
-            moveLog.Clear();
-            LogMove($"Bergabung ke room <b>{currentRoom.Id}</b>");
-            statusMsg = "Berhasil join! Menunggu giliran...";
-            screen    = GameScreen.Game;
-            StartPolling();
-        }
-        actionBusy = false;
+            string id   = data["id"]?.ToString()   ?? "";
+            string name = data["name"]?.ToString() ?? id;
+            if (!_players.Exists(p => p.id == id))
+                _players.Add((id, name));
+            int count = data["playerCount"]?.Value<int>() ?? _players.Count;
+            _status = count + " pemain di room.";
+            AddLog(name + " bergabung.");
+        });
+
+        _room.On("player_left", (JToken data) =>
+        {
+            string id   = data["id"]?.ToString()   ?? "";
+            string name = data["name"]?.ToString() ?? id;
+            _players.RemoveAll(p => p.id == id);
+            AddLog(name + " keluar.");
+        });
+
+        _room.On("game_started", (JToken data) =>
+        {
+            _gameStarted = true;
+            _currentTurn     = data["currentTurn"]?.ToString()     ?? "";
+            _currentTurnName = data["currentTurnName"]?.ToString() ?? _currentTurn;
+            var rawPlayers = data["players"] as JArray;
+            RefreshPlayerList(rawPlayers);
+            AddLog("Game dimulai! Giliran pertama: " + _currentTurnName);
+            _status = "Game berlangsung.";
+        });
+
+        _room.On("turn_changed", (JToken data) =>
+        {
+            _currentTurn     = data["currentTurn"]?.ToString()     ?? "";
+            _currentTurnName = data["currentTurnName"]?.ToString() ?? _currentTurn;
+            string prevName  = data["prevTurnName"]?.ToString()    ?? "";
+            string move      = data["payload"]?["move"]?.ToString() ?? "";
+            string logLine   = prevName + " → " + _currentTurnName;
+            if (!string.IsNullOrEmpty(move)) logLine += " | gerakan: " + move;
+            AddLog(logLine);
+            _status = "Giliran: " + _currentTurnName;
+        });
+
+        _room.On("turn_timeout", (JToken data) =>
+        {
+            string timedOut      = data["timedOutPlayerName"]?.ToString() ?? "";
+            _currentTurn         = data["currentTurn"]?.ToString()        ?? "";
+            _currentTurnName     = data["currentTurnName"]?.ToString()    ?? _currentTurn;
+            AddLog(timedOut + " timeout → giliran " + _currentTurnName);
+        });
+
+        _room.On("game_over", (JToken data) =>
+        {
+            _gameStarted = false;
+            AddLog("Game selesai! " + data?.ToString());
+            _status = "Game selesai.";
+        });
+
+        _room.On("error", (JToken data) =>
+        {
+            string msg = data["message"]?.ToString() ?? "Unknown error";
+            _status = "Error: " + msg;
+            AddLog("[Error] " + msg);
+        });
+
+        _room.On("disconnected", (JToken _) =>
+        {
+            _status = "Terputus dari server.";
+            _screen = Screen.Lobby;
+        });
     }
 
-    IEnumerator DoSubmitTurn()
+    // ─── Helpers ───────────────────────────────────────────────────────────────
+
+    void RefreshPlayerList(JArray raw)
     {
-        if (string.IsNullOrEmpty(moveInput.Trim())) yield break;
-        actionBusy = true;
-
-        string move = moveInput.Trim();
-        moveInput   = "";
-
-        var state = new Dictionary<string, object>
+        _players.Clear();
+        if (raw == null) return;
+        foreach (var p in raw)
         {
-            { "lastMove", move },
-            { "movedBy",  myPlayerId },
-            { "movedAt",  System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() },
+            string id   = p["id"]?.ToString()   ?? "";
+            string name = p["name"]?.ToString() ?? id;
+            _players.Add((id, name));
+        }
+    }
+
+    void AddLog(string msg)
+    {
+        string time = DateTime.Now.ToString("HH:mm:ss");
+        _log.Add("[" + time + "] " + msg);
+        if (_log.Count > 60) _log.RemoveAt(0);
+    }
+
+    GUIStyle BoldLabel() => new GUIStyle(_styleLabel) { fontStyle = FontStyle.Bold, fontSize = 13 };
+
+    // ─── Styles ────────────────────────────────────────────────────────────────
+
+    void BuildStyles()
+    {
+        if (_stylesReady) return;
+        _stylesReady = true;
+
+        _styleTitle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize  = 20, fontStyle = FontStyle.Bold,
+            normal    = { textColor = new Color(0.35f, 0.65f, 1f) },
+            alignment = TextAnchor.MiddleCenter,
         };
-
-        var task = Multiplayer.SubmitTurn(currentRoom.Id, state);
-        yield return new WaitUntil(() => task.IsCompleted);
-
-        if (task.Exception != null)
+        _styleStatus = new GUIStyle(GUI.skin.label)
         {
-            statusMsg = $"Gagal submit: {task.Exception.GetBaseException().Message}";
-            moveInput  = move;
-        }
-        else
+            fontSize = 12, wordWrap = true,
+            normal   = { textColor = new Color(0.55f, 0.55f, 0.6f) },
+            alignment = TextAnchor.MiddleCenter,
+        };
+        _styleBox = new GUIStyle(GUI.skin.box)
         {
-            currentRoom = task.Result;
-            var players = currentRoom.Players ?? new string[0];
-            int nextIdx = System.Array.IndexOf(players, currentRoom.CurrentTurn) + 1;
-            LogMove($"<color=#4ade80>Kamu</color> → <b>{move}</b>");
-            statusMsg = $"Giliran dikirim! Sekarang giliran Player {nextIdx}.";
-        }
-        actionBusy = false;
-    }
-
-    IEnumerator DoPollOnce()
-    {
-        var task = Multiplayer.GetRoom(currentRoom.Id);
-        yield return new WaitUntil(() => task.IsCompleted);
-        if (task.Exception == null && task.Result != null)
+            normal  = { background = MakeTex(new Color(0.07f, 0.09f, 0.13f, 0.97f)) },
+            padding = new RectOffset(16, 16, 14, 14),
+        };
+        _styleBtnPrimary = new GUIStyle(GUI.skin.button)
         {
-            var prev = currentRoom;
-            currentRoom = task.Result;
-            var players = currentRoom.Players ?? new string[0];
-            if (prev?.CurrentTurn != currentRoom.CurrentTurn)
-                LogMove($"Giliran berpindah ke Player {System.Array.IndexOf(players, currentRoom.CurrentTurn) + 1}");
-        }
-    }
-
-    IEnumerator DoLeaveRoom()
-    {
-        actionBusy = true;
-        StopPolling();
-        var task = Multiplayer.LeaveRoom(currentRoom.Id);
-        yield return new WaitUntil(() => task.IsCompleted);
-        currentRoom = null;
-        moveLog.Clear();
-        screen    = GameScreen.Lobby;
-        statusMsg = "Keluar dari room.";
-        actionBusy = false;
-    }
-
-    // ─── Polling ───────────────────────────────────────────────────────────
-
-    void StartPolling() { if (!isPolling) StartCoroutine(PollLoop()); }
-    void StopPolling()  { isPolling = false; }
-
-    IEnumerator PollLoop()
-    {
-        isPolling = true;
-        while (isPolling && currentRoom != null)
+            fontSize = 13, fontStyle = FontStyle.Bold,
+            normal   = { background = MakeTex(new Color(0.08f, 0.48f, 0.2f)),  textColor = Color.white },
+            hover    = { background = MakeTex(new Color(0.12f, 0.6f,  0.25f)), textColor = Color.white },
+            active   = { background = MakeTex(new Color(0.05f, 0.35f, 0.15f)), textColor = Color.white },
+            padding  = new RectOffset(12, 12, 8, 8),
+        };
+        _styleBtnSecondary = new GUIStyle(_styleBtnPrimary)
         {
-            yield return new WaitForSeconds(2f);
-            if (actionBusy || currentRoom == null) continue;
-
-            var task = Multiplayer.GetRoom(currentRoom.Id);
-            yield return new WaitUntil(() => task.IsCompleted);
-            if (task.Exception != null || task.Result == null) continue;
-
-            var updated = task.Result;
-            if (updated.CurrentTurn != currentRoom.CurrentTurn)
-            {
-                currentRoom = updated;
-                var players = currentRoom.Players ?? new string[0];
-                int idx     = System.Array.IndexOf(players, currentRoom.CurrentTurn) + 1;
-                LogMove($"Giliran berpindah → <color=#38bdf8>Player {idx}</color>");
-                statusMsg = currentRoom.CurrentTurn == myPlayerId
-                    ? "Giliran kamu!"
-                    : $"Menunggu Player {idx}...";
-            }
-            else
-            {
-                currentRoom = updated;
-            }
-        }
-        isPolling = false;
+            normal = { background = MakeTex(new Color(0.1f, 0.13f, 0.18f)), textColor = new Color(0.7f, 0.7f, 0.75f) },
+            hover  = { background = MakeTex(new Color(0.15f, 0.18f, 0.25f)), textColor = Color.white },
+        };
+        _styleBtnDanger = new GUIStyle(_styleBtnPrimary)
+        {
+            normal = { background = MakeTex(new Color(0.55f, 0.1f, 0.1f)), textColor = Color.white },
+            hover  = { background = MakeTex(new Color(0.7f,  0.12f, 0.12f)), textColor = Color.white },
+        };
+        _styleLabel = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 12, normal = { textColor = new Color(0.7f, 0.7f, 0.75f) },
+        };
+        _styleMono = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 12, font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"),
+            normal   = { textColor = new Color(0.35f, 0.65f, 1f) },
+        };
+        _styleTurnActive = new GUIStyle(GUI.skin.box)
+        {
+            fontSize  = 13, fontStyle = FontStyle.Bold,
+            normal    = { background = MakeTex(new Color(0.04f, 0.28f, 0.12f, 0.85f)), textColor = new Color(0.24f, 1f, 0.37f) },
+            alignment = TextAnchor.MiddleLeft,
+            padding   = new RectOffset(12, 8, 5, 5),
+        };
+        _styleTurnWaiting = new GUIStyle(GUI.skin.box)
+        {
+            fontSize  = 12,
+            normal    = { background = MakeTex(new Color(0.07f, 0.09f, 0.14f, 0.6f)), textColor = new Color(0.45f, 0.45f, 0.5f) },
+            alignment = TextAnchor.MiddleLeft,
+            padding   = new RectOffset(12, 8, 5, 5),
+        };
+        _styleLog = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 11, wordWrap = true,
+            normal   = { textColor = new Color(0.5f, 0.55f, 0.6f) },
+        };
     }
 
-    // ─── Helpers ───────────────────────────────────────────────────────────
-
-    void LogMove(string msg)
-    {
-        string time = System.DateTime.Now.ToString("HH:mm:ss");
-        moveLog.Add($"<color=#334155>[{time}]</color> {msg}");
-        if (moveLog.Count > 50) moveLog.RemoveAt(0);
-    }
-
-    static string Truncate(string s, int max) =>
-        s?.Length > max ? s[..max] : s ?? "";
-
-    static Texture2D MakeTexture(Color c)
+    static Texture2D MakeTex(Color c)
     {
         var t = new Texture2D(1, 1);
         t.SetPixel(0, 0, c);

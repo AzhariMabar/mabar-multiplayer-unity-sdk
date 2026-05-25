@@ -1,147 +1,130 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Mabar.Multiplayer.Auth;
-using Mabar.Multiplayer.Models;
-using Mabar.Multiplayer.Rooms;
+using Colyseus;
 using UnityEngine;
 
 namespace Mabar.Multiplayer.Core
 {
     /// <summary>
-    /// Main entry point for Mabar Multiplayer SDK.
+    /// Mabarin SDK v2 — WebSocket entry point.
     ///
-    /// Usage:
+    /// Quick start:
     ///   Multiplayer.Initialize(settings);
-    ///   var auth = await Multiplayer.LoginGuest();
-    ///   var room = await Multiplayer.CreateRoom("Match", maxPlayers: 2);
-    ///   await Multiplayer.SubmitTurn(room.Id, new Dictionary&lt;string, object&gt; { {"move", "e4"} });
-    ///   var state = await Multiplayer.GetRoom(room.Id);  // poll for opponent's turn
+    ///   await Multiplayer.Connect("YourName");
+    ///
+    ///   var room = await Multiplayer.CreateRoom();
+    ///   room.On("turn_changed", (data) => Debug.Log(data));
+    ///   await room.Send("end_turn", new { board = myBoard });
     /// </summary>
     public static class Multiplayer
     {
-        private static MultiplayerSettings settings;
-        private static GuestAuth guestAuth;
+        private static MultiplayerSettings _settings;
+        private static ColyseusClient      _client;
 
-        public static string PlayerId     { get; private set; }
-        public static string Token        { get; private set; }
-        public static long   TokenExpiry  { get; private set; }
-        public static string CurrentRoomId => RoomManager.CurrentRoomId;
+        public static bool   IsInitialized  => _settings != null;
+        public static bool   IsConnected    => _client   != null;
+        public static string PlayerName     { get; private set; }
 
-        public static bool IsInitialized => settings != null;
-        public static bool IsAuthenticated => !string.IsNullOrEmpty(Token);
+        // ── Setup ──────────────────────────────────────────────────────────────
 
-        // ─── Setup ─────────────────────────────────────────────────────────
-
-        public static void Initialize(MultiplayerSettings configuration)
+        public static void Initialize(MultiplayerSettings settings)
         {
-            if (string.IsNullOrEmpty(configuration?.AppKey))
+            if (string.IsNullOrEmpty(settings?.AppKey))
             {
-                Debug.LogError("[MabarSDK] AppKey is empty. Set it in the MabarSettings asset.");
+                Debug.LogError("[Mabarin] AppKey is empty. Set it in MultiplayerSettings asset.");
                 return;
             }
-
-            settings  = configuration;
-            guestAuth = new GuestAuth(configuration.ApiUrl, configuration.AppKey);
-            RoomManager.Initialize(configuration.ApiUrl, configuration.AppKey);
-
-            Debug.Log($"[MabarSDK] Initialized. AppKey: {configuration.AppKey[..Math.Min(8, configuration.AppKey.Length)]}...");
+            _settings = settings;
+            Debug.Log($"[Mabarin] Initialized. Server: {settings.ServerUrl}");
         }
 
-        // ─── Auth ──────────────────────────────────────────────────────────
+        // ── Connect ────────────────────────────────────────────────────────────
 
-        public static async Task<AuthResponse> LoginGuest()
+        /// <summary>
+        /// Set player name and initialize WebSocket client.
+        /// Call once before CreateRoom / JoinRoom.
+        /// </summary>
+        public static Task Connect(string playerName = "")
         {
             EnsureInitialized();
-            var response = await guestAuth.LoginGuestAsync();
-            ApplyAuth(response);
-            return response;
+            PlayerName = string.IsNullOrEmpty(playerName)
+                ? $"Player_{UnityEngine.Random.Range(1000, 9999)}"
+                : playerName.Trim();
+
+            _client = new ColyseusClient(_settings.ServerUrl);
+            Debug.Log($"[Mabarin] Connected as {PlayerName}");
+            return Task.CompletedTask;
         }
 
-        /// Call this before TokenExpiry to keep the session alive without re-login.
-        public static async Task<AuthResponse> RefreshToken()
+        // ── Room management ────────────────────────────────────────────────────
+
+        /// <summary>Create a new room (you become host).</summary>
+        public static async Task<MabarinRoom> CreateRoom(string roomType = "turn_room", Dictionary<string, object> options = null)
         {
-            EnsureInitialized();
-            EnsureAuthenticated();
-            var response = await guestAuth.RefreshAsync(Token);
-            ApplyAuth(response);
-            return response;
+            EnsureConnected();
+            var opts = BuildOptions(options);
+            var raw  = await _client.Create<object>(roomType, opts);
+            return new MabarinRoom(raw);
         }
 
-        // ─── Rooms ─────────────────────────────────────────────────────────
-
-        public static async Task<RoomRecord> CreateRoom(string name = "Room", int maxPlayers = 4, bool isPrivate = false)
+        /// <summary>Join an existing room by its ID.</summary>
+        public static async Task<MabarinRoom> JoinRoom(string roomId, Dictionary<string, object> options = null)
         {
-            EnsureAuthenticated();
-            return await RoomManager.CreateRoomAsync(name, maxPlayers, isPrivate);
+            EnsureConnected();
+            var opts = BuildOptions(options);
+            var raw  = await _client.JoinById<object>(roomId, opts);
+            return new MabarinRoom(raw);
         }
 
-        public static async Task<RoomRecord> JoinRoom(string roomId, string inviteCode = null)
+        /// <summary>
+        /// Join any available room, or create one if none exist.
+        /// Useful for quick-match.
+        /// </summary>
+        public static async Task<MabarinRoom> FindOrCreate(string roomType = "turn_room", Dictionary<string, object> options = null)
         {
-            EnsureAuthenticated();
-            return await RoomManager.JoinRoomAsync(roomId, inviteCode);
+            EnsureConnected();
+            var opts = BuildOptions(options);
+            var raw  = await _client.JoinOrCreate<object>(roomType, opts);
+            return new MabarinRoom(raw);
         }
 
-        public static async Task<RoomRecord> LeaveRoom(string roomId)
+        /// <summary>
+        /// Reconnect to a room after unexpected disconnect.
+        /// Save room.ReconnectionToken before disconnect.
+        /// </summary>
+        public static async Task<MabarinRoom> Reconnect(string reconnectionToken)
         {
-            EnsureAuthenticated();
-            return await RoomManager.LeaveRoomAsync(roomId);
+            EnsureConnected();
+            var raw = await _client.ReconnectById<object>(reconnectionToken);
+            return new MabarinRoom(raw);
         }
 
-        // ─── Turn-based ─────────────────────────────────────────────────────
+        // ── Internals ──────────────────────────────────────────────────────────
 
-        /// Poll the server for current room state (opponent's move, game state, etc.).
-        public static async Task<RoomRecord> GetRoom(string roomId)
+        private static Dictionary<string, object> BuildOptions(Dictionary<string, object> extra)
         {
-            EnsureAuthenticated();
-            return await RoomManager.GetRoomAsync(roomId);
-        }
-
-        /// Submit your move/turn. Server validates it's your turn.
-        /// state: your game state as key-value pairs, e.g. new Dictionary&lt;string,object&gt;{{"board","e4"}}
-        /// nextTurn: optional — override who plays next (default: auto-advance round-robin)
-        public static async Task<RoomRecord> SubmitTurn(
-            string roomId,
-            Dictionary<string, object> state,
-            string nextTurn = null)
-        {
-            EnsureAuthenticated();
-            return await RoomManager.SubmitTurnAsync(roomId, state, nextTurn);
-        }
-
-        // ─── Dev / Simulation helpers ──────────────────────────────────────
-
-        /// Manually set active player token — used by TurnSimConsole to simulate
-        /// multiple players in one Unity instance (each player in production
-        /// runs on their own device with their own Login session).
-        public static void SetToken(string token, string playerId)
-        {
-            Token    = token;
-            PlayerId = playerId;
-            RoomManager.SetToken(token);
-        }
-
-        // ─── Internals ─────────────────────────────────────────────────────
-
-        private static void ApplyAuth(AuthResponse response)
-        {
-            PlayerId    = response.PlayerId;
-            Token       = response.Token;
-            TokenExpiry = response.ExpiresAt;
-            RoomManager.SetToken(response.Token);
+            var opts = new Dictionary<string, object>
+            {
+                { "appKey", _settings.AppKey },
+                { "name",   PlayerName },
+            };
+            if (extra != null)
+                foreach (var kv in extra) opts[kv.Key] = kv.Value;
+            return opts;
         }
 
         private static void EnsureInitialized()
         {
             if (!IsInitialized)
-                throw new InvalidOperationException("[MabarSDK] Not initialized. Call Multiplayer.Initialize(settings) first.");
+                throw new InvalidOperationException("[Mabarin] Call Initialize(settings) first.");
         }
 
-        private static void EnsureAuthenticated()
+        private static void EnsureConnected()
         {
             EnsureInitialized();
-            if (!IsAuthenticated)
-                throw new InvalidOperationException("[MabarSDK] Not authenticated. Call Multiplayer.LoginGuest() first.");
+            if (!IsConnected)
+                throw new InvalidOperationException("[Mabarin] Call Connect() first.");
         }
     }
 }

@@ -6,8 +6,7 @@
   "description": "Lightweight Unity multiplayer SDK for turn-based and casual games.",
   "keywords": ["multiplayer", "turn-based", "unity", "rpc", "socket"],
   "dependencies": {
-    "com.unity.nuget.newtonsoft-json": "3.2.1",
-    "io.colyseus": "https://github.com/colyseus/colyseus-unity-sdk.git#upm"
+    "com.unity.nuget.newtonsoft-json": "3.2.1"
   },
   "samples": [
     {
