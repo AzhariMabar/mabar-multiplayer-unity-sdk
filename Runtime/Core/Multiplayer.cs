@@ -8,18 +8,16 @@ using UnityEngine;
 namespace Mabar.Multiplayer.Core
 {
     /// <summary>
-    /// Mabarin SDK v2 — entry point.
-    ///
-    /// No external dependencies required (self-contained WebSocket client).
+    /// MabarinClient — SDK entry point.
     ///
     /// Quick start:
-    ///   Multiplayer.Initialize(settings);
-    ///   await Multiplayer.Connect("PlayerName");
-    ///   var room = await Multiplayer.CreateRoom("mabar_room");
-    ///   room.On&lt;JObject&gt;("event", data =&gt; Debug.Log(data));
-    ///   await room.Send("move", new { idx = 4 });
+    ///   MabarinClient.Initialize(settings);
+    ///   await MabarinClient.Connect("PlayerName");
+    ///   var room = await MabarinClient.CreateRoom("mabar_room");
+    ///   room.On("event", data => Debug.Log(data));
+    ///   await room.Send("move", new { x = 1f, y = 0f });
     /// </summary>
-    public static class Multiplayer
+    public static class MabarinClient
     {
         private static MultiplayerSettings _settings;
 
@@ -55,29 +53,47 @@ namespace Mabar.Multiplayer.Core
         // ── Room management ────────────────────────────────────────────────────
 
         /// <summary>Create a new room — you become host.</summary>
-        public static async Task<MabarinRoom> CreateRoom(string roomType = "turn_room",
+        public static async Task<MabarinRoom> CreateRoom(
+            string roomType = "mabar_room",
             Dictionary<string, object> options = null)
         {
             EnsureInit();
-            var seat = await Matchmaker.Create(_settings.ServerUrl, roomType, _settings.AppKey, PlayerName);
+            var seat = await Matchmaker.Create(_settings.ServerUrl, roomType, _settings.AppKey, PlayerName, options);
             return await ConnectRoom(seat);
         }
 
         /// <summary>Join an existing room by its Room ID.</summary>
-        public static async Task<MabarinRoom> JoinRoom(string roomId,
+        public static async Task<MabarinRoom> JoinRoom(
+            string roomId,
             Dictionary<string, object> options = null)
         {
             EnsureInit();
-            var seat = await Matchmaker.JoinById(_settings.ServerUrl, roomId, _settings.AppKey, PlayerName);
+            var seat = await Matchmaker.JoinById(_settings.ServerUrl, roomId, _settings.AppKey, PlayerName, options);
             return await ConnectRoom(seat);
         }
 
         /// <summary>Join any available room of this type, or create one if none exist.</summary>
-        public static async Task<MabarinRoom> FindOrCreate(string roomType = "turn_room",
+        public static async Task<MabarinRoom> JoinOrCreate(
+            string roomType = "mabar_room",
             Dictionary<string, object> options = null)
         {
             EnsureInit();
-            var seat = await Matchmaker.JoinOrCreate(_settings.ServerUrl, roomType, _settings.AppKey, PlayerName);
+            var seat = await Matchmaker.JoinOrCreate(_settings.ServerUrl, roomType, _settings.AppKey, PlayerName, options);
+            return await ConnectRoom(seat);
+        }
+
+        /// <summary>List available rooms of this type.</summary>
+        public static Task<List<RoomInfo>> GetRooms(string roomType = "mabar_room")
+        {
+            EnsureInit();
+            return Matchmaker.GetRooms(_settings.ServerUrl, roomType, _settings.AppKey);
+        }
+
+        /// <summary>Reconnect to a room after an unexpected disconnect using the saved token.</summary>
+        public static async Task<MabarinRoom> Reconnect(string reconnectionToken)
+        {
+            EnsureInit();
+            var seat = await Matchmaker.Reconnect(_settings.ServerUrl, reconnectionToken);
             return await ConnectRoom(seat);
         }
 

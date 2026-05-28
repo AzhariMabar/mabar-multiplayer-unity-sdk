@@ -56,7 +56,7 @@ public class MabarTurnDemo : MonoBehaviour
             _status = "ERROR: Assign MultiplayerSettings di Inspector!";
             return;
         }
-        Multiplayer.Initialize(Settings);
+        MabarinClient.Initialize(Settings);
     }
 
     void OnGUI()
@@ -219,8 +219,8 @@ public class MabarTurnDemo : MonoBehaviour
         _status = "Menghubungkan...";
         try
         {
-            await Multiplayer.Connect(_nameInput.Trim());
-            _status = "Terhubung sebagai " + Multiplayer.PlayerName + ".";
+            await MabarinClient.Connect(_nameInput.Trim());
+            _status = "Terhubung sebagai " + MabarinClient.PlayerName + ".";
             _screen = Screen.Lobby;
         }
         catch (Exception e) { _status = "Gagal: " + e.Message; }
@@ -233,7 +233,7 @@ public class MabarTurnDemo : MonoBehaviour
         _status = "Membuat room...";
         try
         {
-            _room = await Multiplayer.CreateRoom("turn_room");
+            _room = await MabarinClient.CreateRoom("turn_room");
             _isHost = true;
             _mySessionId = _room.SessionId;
             RegisterRoomEvents();
@@ -251,7 +251,7 @@ public class MabarTurnDemo : MonoBehaviour
         _status = "Bergabung...";
         try
         {
-            _room = await Multiplayer.JoinRoom(roomId);
+            _room = await MabarinClient.JoinRoom(roomId);
             _isHost = false;
             _mySessionId = _room.SessionId;
             RegisterRoomEvents();
