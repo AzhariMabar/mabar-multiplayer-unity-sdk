@@ -9,8 +9,8 @@ namespace Mabar.Multiplayer.Models
     public class MultiplayerSettings : ScriptableObject
     {
         [Header("Server")]
-        [Tooltip("WebSocket server URL. ws://localhost:2567 for local, wss://cloud.mabar.studio for cloud.")]
-        public string ServerUrl = "wss://cloud.mabar.studio";
+        [Tooltip("WebSocket server URL. ws://localhost:2567 for local, wss://api.mabar.studio for cloud.")]
+        public string ServerUrl = "wss://api.mabar.studio";
 
         [Header("App Key")]
         [Tooltip("Your Mabarin AppKey. Get one at mabarin.studio or via POST /apps/register.")]

@@ -26,7 +26,7 @@ namespace Mabar.Multiplayer.Auth
 
         public async Task<AuthResponse> LoginGuestAsync()
         {
-            using var req = new UnityWebRequest($"{apiUrl}/auth/guest", "POST")
+            using var req = new UnityWebRequest($"{apiUrl}/api/auth/guest", "POST")
             {
                 uploadHandler   = new UploadHandlerRaw(Encoding.UTF8.GetBytes("{}")),
                 downloadHandler = new DownloadHandlerBuffer(),

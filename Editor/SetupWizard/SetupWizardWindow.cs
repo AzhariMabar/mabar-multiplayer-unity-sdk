@@ -88,7 +88,7 @@ namespace Mabar.Multiplayer.Editor
             }
 
             GUILayout.Space(6);
-            GUILayout.Label("Server URL (default: wss://cloud.mabar.studio):", subStyle);
+            GUILayout.Label("Server URL (default: wss://api.mabar.studio):", subStyle);
             EditorGUI.BeginChangeCheck();
             var newUrl = EditorGUILayout.TextField("Server URL", settings.ServerUrl);
             if (EditorGUI.EndChangeCheck())
